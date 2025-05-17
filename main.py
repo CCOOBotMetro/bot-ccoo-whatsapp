@@ -1,36 +1,28 @@
 import os
+import json
 import pickle
-import numpy as np
-import requests
 from flask import Flask, request
 from openai import OpenAI
 from dotenv import load_dotenv
-import faiss
-# Carrega variables d'entorn
+# Carrega les variables d'entorn
 load_dotenv()
+# Inicialitza el client OpenAI
 client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
-VERIFY_TOKEN = os.getenv("VERIFY_TOKEN", "botfmb2025")
-# Carrega dades entrenades
+# Inicialitza Flask
+app = Flask(__name__)
+# Carrega l'índex i els fragments de text
 with open("index.pkl", "rb") as f:
    index = pickle.load(f)
 with open("chunks.pkl", "rb") as f:
    chunks = pickle.load(f)
-# Funció per buscar informació rellevant
-def buscar_context(text):
-   response = client.embeddings.create(
-       input=[text],
-       model="text-embedding-3-small"
-   )
-   embedding = np.array(response.data[0].embedding).astype("float32")
-   D, I = index.search(np.array([embedding]), k=3)
-   return "\n".join([chunks[i] for i in I[0] if i < len(chunks)])
-# Flask app
-app = Flask(__name__)
+VERIFY_TOKEN = os.environ.get("VERIFY_TOKEN", "botfmb2025")
 @app.route("/webhook", methods=["GET"])
 def verify():
    token = request.args.get("hub.verify_token")
    challenge = request.args.get("hub.challenge")
-   return challenge if token == VERIFY_TOKEN else "Verificació fallida", 403
+   if token == VERIFY_TOKEN:
+       return challenge
+   return "Verificació fallida", 403
 @app.route("/webhook", methods=["POST"])
 def webhook():
    data = request.get_json()
@@ -41,20 +33,30 @@ def webhook():
                messages = value.get("messages", [])
                if messages:
                    for message in messages:
-                       phone_id = value["metadata"]["phone_number_id"]
+                       phone_number_id = value["metadata"]["phone_number_id"]
                        sender = message["from"]
                        text = message.get("text", {}).get("body", "")
-                       context = buscar_context(text)
+                       # Cerca el context rellevant al text rebut
+                       embedding = client.embeddings.create(
+                           model="text-embedding-ada-002",
+                           input=text
+                       ).data[0].embedding
+                       import numpy as np
+                       D, I = index.search(np.array([embedding], dtype="float32"), k=5)
+                       context = "\n\n".join([chunks[i] for i in I[0]])
+                       # Genera la resposta amb OpenAI
                        resposta = client.chat.completions.create(
                            model="gpt-3.5-turbo",
                            messages=[
-                              {"role": "system", "content": f"Contesta només amb la informació següent:\n\n{context}"}
+                               {"role": "system", "content": f"Contesta només amb la informació següent:\n\n{context}"},
                                {"role": "user", "content": text}
                            ]
                        ).choices[0].message.content
-                       enviar_missatge_whatsapp(sender, resposta, phone_id)
+                       # Envia la resposta per WhatsApp
+                       enviar_missatge_whatsapp(sender, resposta, phone_number_id)
    return "OK", 200
 def enviar_missatge_whatsapp(destinatari, missatge, phone_number_id):
+   import requests
    url = f"https://graph.facebook.com/v18.0/{phone_number_id}/messages"
    headers = {
        "Authorization": f"Bearer {os.environ['WHATSAPP_TOKEN']}",
@@ -67,6 +69,6 @@ def enviar_missatge_whatsapp(destinatari, missatge, phone_number_id):
        "text": {"body": missatge}
    }
    response = requests.post(url, headers=headers, json=data)
-   print("Missatge enviat:", response.status_code, response.text)
+   print("Resposta enviada:", response.status_code, response.text)
 if __name__ == "__main__":
-   app.run(host="0.0.0.0", port=5000)
+   app.run(host="0.0.0.0", port=10000)
