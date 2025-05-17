@@ -44,7 +44,7 @@ def webhook():
             "text": {"body": resposta}
         }
 
-        url = f"https://graph.facebook.com/v18.0/{PHONE_NUMBER_ID}/messages"
+        url = f"https://graph.facebook.com/v18.0/580162021858021/messages"
         requests.post(url, headers=headers, json=payload)
     except Exception as e:
         print("Error:", e)
