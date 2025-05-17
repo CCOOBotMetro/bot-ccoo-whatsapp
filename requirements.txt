@@ -1,2 +1,5 @@
 flask
 requests
+numpy
+faiss-cpu
+openai==1.14.2
