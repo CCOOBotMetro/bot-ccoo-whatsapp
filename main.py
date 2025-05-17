@@ -70,4 +70,4 @@ def enviar_missatge_whatsapp(destinatari, missatge, phone_number_id):
    response = requests.post(url, headers=headers, json=data)
    print("Missatge enviat:", response.status_code, response.text)
 if __name__ == "__main__":
-   app.run(host="0.0.0.0", port=10000)
+   app.run(host="0.0.0.0", port=5000)))
