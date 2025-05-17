@@ -13,13 +13,13 @@ load_dotenv()
 client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
 VERIFY_TOKEN = os.getenv("VERIFY_TOKEN", "botfmb2025")
 
-# Carrega els arxius d'embeddings i chunks
+# Carrega l’índex FAISS i els fragments del document de permisos
 with open("index.pkl", "rb") as f:
     index = pickle.load(f)
 with open("chunks.pkl", "rb") as f:
     chunks = pickle.load(f)
 
-# Inicia Flask
+# Inicialitza Flask
 app = Flask(__name__)
 
 @app.route("/webhook", methods=["GET"])
@@ -40,9 +40,10 @@ def webhook():
                 messages = value.get("messages", [])
                 if messages:
                     for message in messages:
-                        phone_number_id = value["metadata"]["phone_number_id"]
                         sender = message["from"]
+                        phone_number_id = value["metadata"]["phone_number_id"]
                         text = message.get("text", {}).get("body", "")
+                        print(f"Missatge rebut de {sender}: {text}")
 
                         # Genera embedding de la pregunta
                         embedding = client.embeddings.create(
@@ -50,17 +51,17 @@ def webhook():
                             input=[text]
                         ).data[0].embedding
 
-                        # Busca context rellevant
+                        # Busca context rellevant dins els fragments
                         D, I = index.search(np.array([embedding], dtype="float32"), k=5)
                         context = "\n\n".join([chunks[i] for i in I[0] if i < len(chunks)])
 
-                        # Genera la resposta
+                        # Crea la resposta amb el context trobat
                         resposta = client.chat.completions.create(
                             model="gpt-3.5-turbo",
                             messages=[
                                 {
                                     "role": "system",
-                                    "content": f"Respon només amb la informació següent. Si no tens prou dades, digues-ho:\n\n{context}"
+                                    "content": f"Respon només amb la informació següent del document de permisos. Si no tens prou dades, digues-ho:\n\n{context}"
                                 },
                                 {
                                     "role": "user",
@@ -69,7 +70,9 @@ def webhook():
                             ]
                         ).choices[0].message.content
 
+                        # Envia la resposta per WhatsApp
                         enviar_missatge_whatsapp(sender, resposta, phone_number_id)
+
     return "OK", 200
 
 def enviar_missatge_whatsapp(destinatari, missatge, phone_number_id):
@@ -84,8 +87,8 @@ def enviar_missatge_whatsapp(destinatari, missatge, phone_number_id):
         "type": "text",
         "text": {"body": missatge}
     }
-    response = requests.post(url, headers=headers, json=data)
-    print("Missatge enviat:", response.status_code, response.text)
+    resposta = requests.post(url, headers=headers, json=data)
+    print("Resposta enviada:", resposta.status_code, resposta.text)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
