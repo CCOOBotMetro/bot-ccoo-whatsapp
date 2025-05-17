@@ -56,4 +56,4 @@ def enviar_missatge_whatsapp(destinatari, missatge, phone_number_id):
    response = requests.post(url, headers=headers, json=data)
    print("Resposta enviant a WhatsApp:", response.status_code, response.text)
 if __name__ == "__main__":
-   app.run(debug=True)
+   app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
