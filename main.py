@@ -48,8 +48,7 @@ def webhook():
                        resposta = client.chat.completions.create(
                            model="gpt-3.5-turbo",
                            messages=[
-                               {"role": "system", "content": f"Contesta només amb la informació següent:
-{context}"},
+                              {"role": "system", "content": f"Contesta només amb la informació següent:\n\n{context}"}
                                {"role": "user", "content": text}
                            ]
                        ).choices[0].message.content
