@@ -1,51 +1,49 @@
 from flask import Flask, request
-import os
-import json
 import requests
+import os
+from openai import OpenAI
 app = Flask(__name__)
-VERIFY_TOKEN = os.environ.get("VERIFY_TOKEN")
-WHATSAPP_TOKEN = os.environ.get("WHATSAPP_TOKEN")
-@app.route("/webhook", methods=["GET"])
-def verify():
-   print("Verificant webhook...")
-   if request.args.get("hub.mode") == "subscribe" and request.args.get("hub.verify_token") == VERIFY_TOKEN:
-       print("Webhook verificat correctament.")
-       return request.args.get("hub.challenge"), 200
-   print("Error de verificació.")
-   return "Error de verificació", 403
-@app.route("/webhook", methods=["POST"])
+# Inicialitza client d'OpenAI
+client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+VERIFY_TOKEN = os.environ["VERIFY_TOKEN"]
+WHATSAPP_TOKEN = os.environ["WHATSAPP_TOKEN"]
+@app.route('/webhook', methods=['GET', 'POST'])
 def webhook():
-   print("POST /webhook rebut")
-   data = request.get_json()
-   print("JSON rebut:", json.dumps(data, indent=2))
-   try:
-       entry = data["entry"][0]
-       change = entry["changes"][0]
-       value = change["value"]
-       message = value["messages"][0]
-       sender_id = message["from"]
-       text = message["text"]["body"]
-       phone_number_id = value["metadata"]["phone_number_id"]
-       print(f"Missatge rebut de {sender_id}: {text}")
-       enviar_missatge(sender_id, phone_number_id, "Hola! El bot està funcionant correctament.")
-   except Exception as e:
-       print("ERROR DURANT LA GESTIÓ DEL MISSATGE:")
-       print(e)
-   return "OK", 200
-def enviar_missatge(destinatari, phone_number_id, text):
-   print(f"Enviant resposta a {destinatari}")
-   url = f"https://graph.facebook.com/v18.0/{phone_number_id}/messages"
+   if request.method == 'GET':
+       if request.args.get('hub.verify_token') == VERIFY_TOKEN:
+           return request.args.get('hub.challenge')
+       return 'Verificació fallida', 403
+   if request.method == 'POST':
+       data = request.get_json()
+       try:
+           message = data['entry'][0]['changes'][0]['value']['messages'][0]
+           sender = message['from']
+           text = message['text']['body']
+           # Consulta a OpenAI
+           resposta = client.chat.completions.create(
+               model="gpt-3.5-turbo",
+               messages=[
+                   {"role": "system", "content": "Respon com a assistent sindical. Si no tens prou informació, digues-ho."},
+                   {"role": "user", "content": text}
+               ]
+           ).choices[0].message.content
+           # Enviar resposta a WhatsApp
+           enviar_resposta(sender, resposta)
+       except Exception as e:
+           print("Error:", e)
+       return 'OK', 200
+def enviar_resposta(telefon, missatge):
+   url = "https://graph.facebook.com/v18.0/580162021858021/messages"
    headers = {
        "Authorization": f"Bearer {WHATSAPP_TOKEN}",
        "Content-Type": "application/json"
    }
    payload = {
        "messaging_product": "whatsapp",
-       "to": destinatari,
+       "to": telefon,
        "type": "text",
-       "text": {"body": text}
+       "text": {"body": missatge}
    }
-   response = requests.post(url, headers=headers, data=json.dumps(payload))
-   print("Resposta de Meta:", response.status_code, response.text)
-if __name__ == "__main__":
-   app.run(host="0.0.0.0", port=10000)
+   requests.post(url, headers=headers, json=payload)
+if __name__ == '__main__':
+   app.run(host='0.0.0.0', port=10000)
