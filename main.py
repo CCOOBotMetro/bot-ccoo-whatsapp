@@ -1,77 +1,44 @@
 from flask import Flask, request
 import os
 import json
-import openai
-import faiss
-import numpy as np
-import pickle
-# Carrega la clau d’API d’OpenAI
-openai.api_key = os.environ["OPENAI_API_KEY"]
-# Carrega l’índex FAISS i els trossos de text
-with open("index.pkl", "rb") as f:
-   index = pickle.load(f)
-with open("chunks.pkl", "rb") as f:
-   chunk_texts = pickle.load(f)
-# Crea l'aplicació Flask
+import requests
 app = Flask(__name__)
-# Verificació del webhook de Meta
+VERIFY_TOKEN = os.environ.get("VERIFY_TOKEN")
+WHATSAPP_TOKEN = os.environ.get("WHATSAPP_TOKEN")
 @app.route("/webhook", methods=["GET"])
 def verify():
-   verify_token = os.environ.get("VERIFY_TOKEN")
-   mode = request.args.get("hub.mode")
-   token = request.args.get("hub.verify_token")
-   challenge = request.args.get("hub.challenge")
-   if mode == "subscribe" and token == verify_token:
-       return challenge, 200
-   else:
-       return "Unauthorized", 403
-# Tractar missatges entrants
+   if request.args.get("hub.mode") == "subscribe" and request.args.get("hub.verify_token") == VERIFY_TOKEN:
+       return request.args.get("hub.challenge"), 200
+   return "Error de verificació", 403
 @app.route("/webhook", methods=["POST"])
 def webhook():
    data = request.get_json()
+   print("Dades rebudes:", json.dumps(data, indent=2))
    try:
-       message = data["entry"][0]["changes"][0]["value"]["messages"][0]
-       user_message = message["text"]["body"]
-       phone_number_id = data["entry"][0]["changes"][0]["value"]["metadata"]["phone_number_id"]
+       entry = data["entry"][0]
+       change = entry["changes"][0]
+       message = change["value"]["messages"][0]
        sender_id = message["from"]
-       # Crear embedding
-       embedding = openai.Embedding.create(
-           input=user_message,
-           model="text-embedding-3-small"
-       )["data"][0]["embedding"]
-       # Buscar contextos més rellevants
-       D, I = index.search(np.array([embedding]).astype("float32"), 3)
-       context = "\n---\n".join([chunk_texts[i] for i in I[0]])
-       # Generar resposta
-       resposta = openai.ChatCompletion.create(
-           model="gpt-3.5-turbo",
-           messages=[
-               {"role": "system", "content": "Respon segons el context proporcionat. Si no tens prou informació, digues-ho."},
-               {"role": "user", "content": f"Context:\n{context}\n\nPregunta: {user_message}"}
-           ]
-       )["choices"][0]["message"]["content"]
-       # Enviar la resposta per WhatsApp
-       enviar_resposta(sender_id, resposta, phone_number_id)
+       phone_number_id = change["value"]["metadata"]["phone_number_id"]
+       enviar_missatge(sender_id, phone_number_id, "Hola! El bot està funcionant correctament.")
    except Exception as e:
        print("Error:", e)
    return "OK", 200
-# Enviar missatge per WhatsApp
-def enviar_resposta(destinatari, text, phone_number_id):
-   import requests
-   whatsapp_token = os.environ["WHATSAPP_TOKEN"]
+def enviar_missatge(destinatari, phone_number_id, text):
    url = f"https://graph.facebook.com/v18.0/{phone_number_id}/messages"
    headers = {
-       "Authorization": f"Bearer {whatsapp_token}",
+       "Authorization": f"Bearer {WHATSAPP_TOKEN}",
        "Content-Type": "application/json"
    }
-   body = {
+   payload = {
        "messaging_product": "whatsapp",
        "to": destinatari,
+       "type": "text",
        "text": {
            "body": text
        }
    }
-   requests.post(url, headers=headers, data=json.dumps(body))
-# Inici de l'aplicació
+   response = requests.post(url, headers=headers, data=json.dumps(payload))
+   print("Resposta Meta:", response.text)
 if __name__ == "__main__":
    app.run(host="0.0.0.0", port=10000)
