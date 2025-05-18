@@ -5,11 +5,11 @@ from openai import OpenAI
 from dotenv import load_dotenv
 import requests
 load_dotenv()
-# Inicialitza el client OpenAI
+# Inicialitza OpenAI
 client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+VERIFY_TOKEN = os.environ.get("VERIFY_TOKEN", "botfmb2025")
 # Inicialitza Flask
 app = Flask(__name__)
-VERIFY_TOKEN = os.environ.get("VERIFY_TOKEN", "botfmb2025")
 @app.route("/webhook", methods=["GET"])
 def verify():
    token = request.args.get("hub.verify_token")
@@ -29,22 +29,29 @@ def webhook():
                    for message in messages:
                        phone_number_id = value["metadata"]["phone_number_id"]
                        sender = message["from"]
-                       text = message.get("text", {}).get("body", "").strip()
-                       # Comprova si és un missatge de salutació inicial
-                       salutacions = ["hola", "bon dia", "hello"]
-                       if any(s in text.lower() for s in salutacions):
+                       text = message.get("text", {}).get("body", "").strip().lower()
+                       # Llistat de missatges inicials (salutacions)
+                       MISSATGES_INICIALS = {
+                           "hola", "hola!", "¡hola!",
+                           "bon dia", "bon dia!", "¡bon dia!",
+                           "bona tarda", "bona tarda!", "¡bona tarda!",
+                           "bona nit", "bona nit!", "¡bona nit!",
+                           "ei", "bones", "què tal", "com estàs",
+                           "hello", "hi", "hey", "prueba", "test", "ping", "hola bot"
+                       }
+                       if text in MISSATGES_INICIALS:
                            resposta = (
                                "Hola! Sóc el bot informatiu de CCOO. "
                                "Pots fer-me preguntes sobre permisos, convenis o condicions laborals. "
                                "Respondré segons la informació oficial disponible."
                            )
                            enviar_missatge_whatsapp(sender, resposta, phone_number_id)
-                           return "OK", 200  # No fem cap consulta a OpenAI
-                       # Si no és salutació, consultem OpenAI
+                           return "OK", 200  # Aturem aquí
+                       # Consulta OpenAI només si no és una salutació
                        resposta = client.chat.completions.create(
                            model="gpt-3.5-turbo",
                            messages=[
-                               {"role": "system", "content": "Respon només amb la informació següent:\n\n{context}"},
+                               {"role": "system", "content": "Respon només amb informació oficial proporcionada per CCOO. Si no tens dades suficients, indica-ho."},
                                {"role": "user", "content": text}
                            ]
                        ).choices[0].message.content
