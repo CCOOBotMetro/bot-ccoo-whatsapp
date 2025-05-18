@@ -34,20 +34,22 @@ def webhook():
                                "Pots fer-me preguntes sobre permisos, convenis o condicions laborals. "
                                "Respondré segons la informació oficial disponible."
                            )
-                       else:
-                           resposta = client.chat.completions.create(
-                               model="gpt-3.5-turbo",
-                               messages=[
-                                   {
-                                       "role": "system",
-                                       "content": "Respon només amb la informació següent:\n\n{context}"
-                                   },
-                                   {
-                                       "role": "user",
-                                       "content": text
-                                   }
-                               ]
-                           ).choices[0].message.content
+                           enviar_missatge_whatsapp(sender, resposta, phone_number_id)
+                           return "OK", 200  # Evita passar per OpenAI
+                       # Si no és un missatge inicial, consulta OpenAI
+                       resposta = client.chat.completions.create(
+                           model="gpt-3.5-turbo",
+                           messages=[
+                               {
+                                   "role": "system",
+                                   "content": "Respon només amb la informació següent:\n\n{context}"
+                               },
+                               {
+                                   "role": "user",
+                                   "content": text
+                               }
+                           ]
+                       ).choices[0].message.content
                        enviar_missatge_whatsapp(sender, resposta, phone_number_id)
    return "OK", 200
 def enviar_missatge_whatsapp(destinatari, missatge, phone_number_id):
