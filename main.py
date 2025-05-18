@@ -3,9 +3,12 @@ import json
 from flask import Flask, request
 from openai import OpenAI
 from dotenv import load_dotenv
+import requests
 load_dotenv()
-app = Flask(__name__)
+# Inicialitza el client OpenAI
 client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+# Inicialitza Flask
+app = Flask(__name__)
 VERIFY_TOKEN = os.environ.get("VERIFY_TOKEN", "botfmb2025")
 @app.route("/webhook", methods=["GET"])
 def verify():
@@ -26,34 +29,28 @@ def webhook():
                    for message in messages:
                        phone_number_id = value["metadata"]["phone_number_id"]
                        sender = message["from"]
-                       text = message.get("text", {}).get("body", "").strip().lower()
-                       missatges_inicials = ["hola", "bon dia", "hello", "hello world"]
-                       if text in missatges_inicials:
+                       text = message.get("text", {}).get("body", "").strip()
+                       # Comprova si és un missatge de salutació inicial
+                       salutacions = ["hola", "bon dia", "hello"]
+                       if any(s in text.lower() for s in salutacions):
                            resposta = (
                                "Hola! Sóc el bot informatiu de CCOO. "
                                "Pots fer-me preguntes sobre permisos, convenis o condicions laborals. "
                                "Respondré segons la informació oficial disponible."
                            )
                            enviar_missatge_whatsapp(sender, resposta, phone_number_id)
-                           return "OK", 200  # Evita passar per OpenAI
-                       # Si no és un missatge inicial, consulta OpenAI
+                           return "OK", 200  # No fem cap consulta a OpenAI
+                       # Si no és salutació, consultem OpenAI
                        resposta = client.chat.completions.create(
                            model="gpt-3.5-turbo",
                            messages=[
-                               {
-                                   "role": "system",
-                                   "content": "Respon només amb la informació següent:\n\n{context}"
-                               },
-                               {
-                                   "role": "user",
-                                   "content": text
-                               }
+                               {"role": "system", "content": "Respon només amb la informació següent:\n\n{context}"},
+                               {"role": "user", "content": text}
                            ]
                        ).choices[0].message.content
                        enviar_missatge_whatsapp(sender, resposta, phone_number_id)
    return "OK", 200
 def enviar_missatge_whatsapp(destinatari, missatge, phone_number_id):
-   import requests
    url = f"https://graph.facebook.com/v18.0/{phone_number_id}/messages"
    headers = {
        "Authorization": f"Bearer {os.environ['WHATSAPP_TOKEN']}",
@@ -66,6 +63,6 @@ def enviar_missatge_whatsapp(destinatari, missatge, phone_number_id):
        "text": {"body": missatge}
    }
    response = requests.post(url, headers=headers, json=data)
-   print("Resposta enviant a WhatsApp:", response.status_code, response.text)
+   print("Resposta enviada:", response.status_code, response.text)
 if __name__ == "__main__":
-   app.run(host="0.0.0.0", port=10000)
+   app.run(host="0.0.0.0", port=5000)
