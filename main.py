@@ -46,12 +46,17 @@ def webhook():
                         sender = message["from"]
                         text = message.get("text", {}).get("body", "").strip().lower()
 
+                        print(f"Usuari: {sender}, Missatge: '{text}', Estat: {estat_usuari.get(sender)}")
+
                         if text == "bot":
                             estat_usuari[sender] = "actiu"
+                            ultim_fragment.pop(sender, None)
+                            document_enviat.discard(sender)
                             enviar_missatge_whatsapp(sender, "Bot reactivat! Pots fer-me una nova consulta.", phone_number_id)
                             return "OK", 200
 
                         if estat_usuari.get(sender) == "desconnectat":
+                            print("Usuari desconnectat. Ignorat.")
                             return "OK", 200
 
                         if text in ["sÃ­", "si"] and sender in ultim_fragment:
@@ -72,6 +77,8 @@ def webhook():
 
                         D, I = index.search(np.array([embedding]).astype("float32"), 1)
                         fragment = chunk_texts[I[0][0]]
+
+                        print(f"DistÃ ncia FAISS: {D[0][0]}")
 
                         if D[0][0] > 0.6:
                             missatge = "No disposo d'aquesta informaciÃ³ concreta, perÃ² prÃ²ximament ens posarem en contacte per respondre el teu dubte.\nNecessites alguna cosa mÃ©s?"
