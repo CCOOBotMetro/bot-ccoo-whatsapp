@@ -46,8 +46,6 @@ def webhook():
                         sender = message["from"]
                         text = message.get("text", {}).get("body", "").strip().lower()
 
-                        print(f"Usuari: {sender}, Missatge: '{text}', Estat: {estat_usuari.get(sender)}")
-
                         if text == "bot":
                             estat_usuari[sender] = "actiu"
                             ultim_fragment.pop(sender, None)
@@ -56,8 +54,17 @@ def webhook():
                             return "OK", 200
 
                         if estat_usuari.get(sender) == "desconnectat":
-                            print("Usuari desconnectat. Ignorat.")
                             return "OK", 200
+
+                        if estat_usuari.get(sender) == "esperant_comiat":
+                            if text in ["no", "grÃ cies", "gracias", "res"]:
+                                enviar_missatge_whatsapp(sender, "D'acord, desconnecto el bot. Si necessites res mÃ©s, escriu BOT per tornar a activar-lo.", phone_number_id)
+                                estat_usuari[sender] = "desconnectat"
+                                return "OK", 200
+                            elif text in ["sÃ­", "si"]:
+                                estat_usuari[sender] = "actiu"
+                                enviar_missatge_whatsapp(sender, "D'acord, continua amb la teva consulta.", phone_number_id)
+                                return "OK", 200
 
                         if text in ["sÃ­", "si"] and sender in ultim_fragment:
                             if sender not in document_enviat:
@@ -78,10 +85,8 @@ def webhook():
                         D, I = index.search(np.array([embedding]).astype("float32"), 1)
                         fragment = chunk_texts[I[0][0]]
 
-                        print(f"DistÃ ncia FAISS: {D[0][0]}")
-
                         if D[0][0] > 0.6:
-                            missatge = "No disposo d'aquesta informaciÃ³ concreta, perÃ² prÃ²ximament ens posarem en contacte per respondre el teu dubte.\nNecessites alguna cosa mÃ©s?"
+                            missatge = "No disposo dâ€™aquesta informaciÃ³ concreta, perÃ² prÃ²ximament ens posarem en contacte per respondre el teu dubte.\nNecessites alguna cosa mÃ©s?"
                             estat_usuari[sender] = "esperant_comiat"
                             enviar_missatge_whatsapp(sender, missatge, phone_number_id)
                             return "OK", 200
