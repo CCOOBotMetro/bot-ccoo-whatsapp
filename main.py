@@ -3,7 +3,6 @@ import pickle
 import numpy as np
 import faiss
 import openai
-from docx import Document
 from google.colab import drive
 
 # PAS 1: Muntar Google Drive
