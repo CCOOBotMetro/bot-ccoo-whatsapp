@@ -8,10 +8,10 @@ import pickle
 
 app = Flask(__name__)
 
-# Memòria temporal per controlar estat actiu del bot per cada usuari
 usuaris_actius = {}
+estat_usuari = {}
 
-# Carrega FAISS + chunks
+# Càrrega de dades
 with open("index.pkl", "rb") as f:
     index = pickle.load(f)
 with open("chunks.pkl", "rb") as f:
@@ -19,7 +19,8 @@ with open("chunks.pkl", "rb") as f:
 
 client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
-def enviar_missatge(destinatari, missatge):
+# Missatges
+def enviar_missatge(destinatari, text):
     url = f"https://graph.facebook.com/v18.0/{os.environ['PHONE_NUMBER_ID']}/messages"
     headers = {
         "Authorization": f"Bearer {os.environ['WHATSAPP_TOKEN']}",
@@ -29,59 +30,49 @@ def enviar_missatge(destinatari, missatge):
         "messaging_product": "whatsapp",
         "to": destinatari,
         "type": "text",
-        "text": { "body": missatge }
+        "text": {"body": text}
     }
     requests.post(url, headers=headers, json=data)
 
-def enviar_botons_inici(destinatari):
-    url = f"https://graph.facebook.com/v18.0/{os.environ['PHONE_NUMBER_ID']}/messages"
-    headers = {
-        "Authorization": f"Bearer {os.environ['WHATSAPP_TOKEN']}",
-        "Content-Type": "application/json"
-    }
-    data = {
-        "messaging_product": "whatsapp",
-        "to": destinatari,
-        "type": "interactive",
-        "interactive": {
-            "type": "button",
-            "body": { "text": "Benvingut al bot de CCOO Metro! Selecciona una opció:" },
-            "action": {
-                "buttons": [
-                    { "type": "reply", "reply": { "id": "opc1_permisos", "title": "Permisos" } },
-                    { "type": "reply", "reply": { "id": "opc2_altres", "title": "Altres" } }
-                ]
-            }
-        }
-    }
-    requests.post(url, headers=headers, json=data)
+# Menú inicial
+def enviar_menu_inicial(destinatari):
+    missatge = (
+        "Gràcies per contactar amb CCOO de Metro de Barcelona. Soc el BOT virtual i soc aquí per ajudar-te.\n\n"
+        "Selecciona una opció:\n"
+        "1 - Permisos\n"
+        "2 - Altres"
+    )
+    enviar_missatge(destinatari, missatge)
+    estat_usuari[destinatari] = "menu"
 
-def enviar_botons_permisos(destinatari):
-    permisos = [
-        "Matrimoni", "Canvi de domicili", "Naixement", "Hospitalització",
-        "Decés", "Exàmens", "Formació", "Trasllat", "Funcions públiques"
-    ]
-    botons = [
-        { "type": "reply", "reply": { "id": f"perm_{i}", "title": t } }
-        for i, t in enumerate(permisos)
-    ]
-    data = {
-        "messaging_product": "whatsapp",
-        "to": destinatari,
-        "type": "interactive",
-        "interactive": {
-            "type": "button",
-            "body": { "text": "Selecciona un permís per consultar:" },
-            "action": { "buttons": botons[:3] }  # Mostra els primers 3 (limitat per WhatsApp)
-        }
-    }
-    url = f"https://graph.facebook.com/v18.0/{os.environ['PHONE_NUMBER_ID']}/messages"
-    headers = {
-        "Authorization": f"Bearer {os.environ['WHATSAPP_TOKEN']}",
-        "Content-Type": "application/json"
-    }
-    requests.post(url, headers=headers, json=data)
+# Llistat de permisos
+llista_permisos = [
+    "Matrimoni",
+    "Canvi de domicili",
+    "Naixement i cura de menor",
+    "Hospitalització o accident",
+    "Defunció de familiar",
+    "Deures públics o sindicals",
+    "Funcions electorals",
+    "Trasllat de domicili",
+    "Conciliació familiar",
+    "Formació professional",
+    "Permís retribuït per lactància",
+    "Reducció de jornada",
+    "Permís per exàmens",
+    "Permís sense sou",
+    "Permís per violència de gènere",
+    "Permís per assistència mèdica",
+    "Permís per adopció o acollida",
+    "Permís per jubilació anticipada"
+]
 
+def enviar_llistat_permisos(destinatari):
+    llistat = "\n".join([f"{i+1} - {p}" for i, p in enumerate(llista_permisos)])
+    enviar_missatge(destinatari, f"Quin permís vols consultar?\n\n{llistat}")
+    estat_usuari[destinatari] = "esperant_permís"
+
+# Resposta amb OpenAI
 def generar_resposta(pregunta):
     embedding = client.embeddings.create(
         input=pregunta,
@@ -98,6 +89,7 @@ def generar_resposta(pregunta):
     )
     return resposta.choices[0].message.content
 
+# Flask routes
 @app.route("/", methods=["GET"])
 def index():
     return "Bot viu!", 200
@@ -111,47 +103,50 @@ def webhook():
 
         if "text" in message:
             text = message["text"]["body"].strip().lower()
+
             if text == "bot":
                 usuaris_actius[sender] = True
-                enviar_botons_inici(sender)
+                enviar_menu_inicial(sender)
                 return "OK", 200
-            elif sender in usuaris_actius and usuaris_actius[sender]:
-                if text == "no":
-                    usuaris_actius.pop(sender, None)
-                    enviar_missatge(sender, "D'acord. Si vols tornar a activar-me, escriu BOT.")
-                else:
-                    resposta = generar_resposta(text)
-                    enviar_missatge(sender, resposta)
-                return "OK", 200
-            else:
+
+            if sender not in usuaris_actius or not usuaris_actius[sender]:
                 enviar_missatge(sender, "Per activar el bot escriu la paraula *BOT*.")
                 return "OK", 200
 
-        if "interactive" in message:
-            inter = message["interactive"]
-            if inter["type"] == "button_reply":
-                resposta_id = inter["button_reply"]["id"]
-                usuaris_actius[sender] = True
+            estat = estat_usuari.get(sender, "")
 
-                if resposta_id == "opc1_permisos":
-                    enviar_botons_permisos(sender)
-                elif resposta_id == "opc2_altres":
+            if text == "no":
+                usuaris_actius.pop(sender, None)
+                estat_usuari.pop(sender, None)
+                enviar_missatge(sender, "D'acord! Si vols tornar a activar-me, escriu *BOT*.")
+                return "OK", 200
+
+            if estat == "menu":
+                if text in ["1", "permisos"]:
+                    enviar_llistat_permisos(sender)
+                elif text in ["2", "altres"]:
                     enviar_missatge(sender, "Escriu la teva consulta i ens posarem en contacte.")
-                elif resposta_id.startswith("perm_"):
-                    permis_index = int(resposta_id.split("_")[1])
-                    permis_nom = [
-                        "matrimoni", "canvi de domicili", "naixement",
-                        "hospitalització", "decés", "exàmens",
-                        "formació", "trasllat", "funcions públiques"
-                    ][permis_index]
-                    resposta = generar_resposta(permis_nom)
-                    enviar_missatge(sender, resposta)
-                    enviar_missatge(sender, "Vols fer una altra consulta? (sí / no)")
+                else:
+                    enviar_missatge(sender, "Opció no reconeguda. Escriu 1 o 2.")
+                return "OK", 200
 
+            if estat == "esperant_permís":
+                try:
+                    idx = int(text) - 1
+                    if 0 <= idx < len(llista_permisos):
+                        consulta = llista_permisos[idx]
+                    else:
+                        raise ValueError
+                except:
+                    consulta = text
+                resposta = generar_resposta(consulta)
+                enviar_missatge(sender, resposta)
+                enviar_missatge(sender, "Vols fer una altra consulta? (sí / no)")
+                estat_usuari[sender] = "menu"
                 return "OK", 200
 
     except Exception as e:
-        print("Error al webhook:", e)
+        print("ERROR al webhook:", e)
 
     return "OK", 200
 
