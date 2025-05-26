@@ -34,35 +34,19 @@ def detectar_idioma(text):
 def missatge_benvinguda(lang):
     if lang == "es":
         return (
-            "Bienvenido/a al asistente virtual de CCOO Metro de Barcelona.
-
-"
-            "Estoy aquÃ­ para ayudarte a resolver tus dudas.
-"
-            "Selecciona una de las siguientes opciones:
-
-"
-            "1 - Permisos laborales
-"
-            "2 - Otras consultas
-
-"
+            "Bienvenido/a al asistente virtual de CCOO Metro de Barcelona.\n\n"
+            "Estoy aquÃ­ para ayudarte a resolver tus dudas.\n"
+            "Selecciona una de las siguientes opciones:\n\n"
+            "1 - Permisos laborales\n"
+            "2 - Otras consultas\n\n"
             "Escribe el nÃºmero o el nombre de la opciÃ³n que quieres consultar."
         )
     return (
-        "Benvingut/da a lâ€™assistent virtual de CCOO Metro de Barcelona.
-
-"
-        "Soc aquÃ­ per ajudar-te a resoldre dubtes.
-"
-        "Selecciona una de les segÃ¼ents opcions:
-
-"
-        "1 - Permisos laborals
-"
-        "2 - Altres consultes
-
-"
+        "Benvingut/da a lâ€™assistent virtual de CCOO Metro de Barcelona.\n\n"
+        "Soc aquÃ­ per ajudar-te a resoldre dubtes.\n"
+        "Selecciona una de les segÃ¼ents opcions:\n\n"
+        "1 - Permisos laborals\n"
+        "2 - Altres consultes\n\n"
         "Escriu a continuaciÃ³ el nÃºmero o el nom de lâ€™opciÃ³ que vols consultar."
     )
 
@@ -74,11 +58,9 @@ def text_descarregar_pdf(lang):
 
 def text_final(lang):
     return (
-        "Gracias por utilizar el asistente virtual de CCOO.
-Si mÃ¡s adelante quieres hacer otra consulta, escribe la palabra CCOO."
+        "Gracias por utilizar el asistente virtual de CCOO.\nSi mÃ¡s adelante quieres hacer otra consulta, escribe la palabra CCOO."
         if lang == "es" else
-        "GrÃ cies per utilitzar lâ€™assistent virtual de CCOO.
-Si mÃ©s endavant vols tornar a fer una consulta, escriu la paraula CCOO."
+        "GrÃ cies per utilitzar lâ€™assistent virtual de CCOO.\nSi mÃ©s endavant vols tornar a fer una consulta, escriu la paraula CCOO."
     )
 
 def enviar_missatge(destinatari, missatge):
@@ -147,12 +129,13 @@ def webhook():
             return "OK", 200
         message = value["messages"][0]
         sender = message["from"]
-        text = message["text"]["body"].strip().lower()
+        text = message["text"]["body"].strip()
+        text_lower = text.lower()
     except Exception as e:
         print(f"Error llegint el missatge: {e}")
         return "OK", 200
 
-    lang = detectar_idioma(text)
+    lang = detectar_idioma(text_lower)
     now = datetime.utcnow()
     session = user_sessions.get(sender, {
         "active": True,
@@ -170,7 +153,7 @@ def webhook():
     session["last_active"] = now
 
     if not session["active"]:
-        if text == "ccoo":
+        if text_lower == "ccoo":
             session = {"active": True, "file_sent": False, "state": "inici", "last_active": now, "lang": lang}
             enviar_missatge(sender, missatge_benvinguda(lang))
         user_sessions[sender] = session
@@ -181,25 +164,26 @@ def webhook():
         session["state"] = "menu"
 
     elif session["state"] == "menu":
-        if text in ["1", "permisos", "permÃ­s", "permiso"]:
+        if text_lower in ["1", "permisos", "permÃ­s", "permiso"]:
             llistat = "\n".join([f"{i+1} - {nom}" for i, nom in enumerate(PERMISOS_LISTA)])
             enviar_missatge(sender, f"Consulta de permisos laborals.\nEscriu el nÃºmero o el nom del permÃ­s que vols consultar:\n\n{llistat}")
             session["state"] = "esperant_permÃ­s"
-        elif text in ["2", "altres", "otras", "otros"]:
+        elif text_lower in ["2", "altres", "otras", "otros"]:
             msg = (
                 "Para otras consultas, puedes escribir a: ccoometro@tmb.cat"
                 if lang == "es"
                 else "Per altres consultes, pots escriure a: ccoometro@tmb.cat"
             )
-            enviar_missatge(sender, f"{msg}
-
-{text_nova_consulta(lang)}")
+            enviar_missatge(sender, f"{msg}\n\n{text_nova_consulta(lang)}")
             session["state"] = "post_resposta"
 
     elif session["state"] == "esperant_permÃ­s":
         try:
             idx = int(text) - 1
-            consulta = PERMISOS_LISTA[idx] if 0 <= idx < len(PERMISOS_LISTA) else text
+            if 0 <= idx < len(PERMISOS_LISTA):
+                consulta = PERMISOS_LISTA[idx]
+            else:
+                consulta = text
         except:
             consulta = text
         try:
@@ -216,17 +200,17 @@ def webhook():
             session["state"] = "post_resposta"
 
     elif session["state"] == "esperant_pdf":
-        if text == "sÃ­":
+        if text_lower == "sÃ­" or text_lower == "si":
             enviar_document(sender)
             session["file_sent"] = True
         enviar_missatge(sender, text_nova_consulta(lang))
         session["state"] = "post_resposta"
 
     elif session["state"] == "post_resposta":
-        if text == "sÃ­":
+        if text_lower == "sÃ­" or text_lower == "si":
             enviar_missatge(sender, missatge_benvinguda(lang))
             session["state"] = "menu"
-        elif text == "no":
+        elif text_lower == "no":
             enviar_missatge(sender, text_final(lang))
             session["active"] = False
 
