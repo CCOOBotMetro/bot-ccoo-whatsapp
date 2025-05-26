@@ -10,7 +10,6 @@ from datetime import datetime
 app = Flask(__name__)
 client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
-# Carreguem els fitxers
 with open("index.pkl", "rb") as f:
     index = pickle.load(f)
 with open("chunks.pkl", "rb") as f:
@@ -73,6 +72,12 @@ def generar_resposta(pregunta):
 @app.route("/", methods=["GET"])
 def index():
     return "Bot viu!", 200
+
+@app.route("/webhook", methods=["GET"])
+def verificar_webhook():
+    if request.args.get("hub.verify_token") == "ccoo2025":
+        return request.args.get("hub.challenge")
+    return "Token invÃ lid", 403
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
