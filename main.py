@@ -18,11 +18,11 @@ with open("chunks.pkl", "rb") as f:
 user_sessions = {}
 PERMISOS_LISTA = [
     "Matrimoni", "Canvi de domicili", "Naixement i cura de menor",
-    "Visites mÃ¨diques", "ExÃ mens oficials", "DefunciÃ³ de familiar",
-    "Assumptes propis", "Deures pÃºblics", "Judici per empresa",
-    "Cura fills menors", "LactÃ ncia acumulada", "ReducciÃ³ de jornada",
-    "ExÃ mens prenatals", "Sense sou", "ViolÃ¨ncia de gÃ¨nere",
-    "AssistÃ¨ncia mÃ¨dica familiars", "AdopciÃ³ / acolliment", "JubilaciÃ³ parcial"
+    "Visites mèdiques", "Exàmens oficials", "Defunció de familiar",
+    "Assumptes propis", "Deures públics", "Judici per empresa",
+    "Cura fills menors", "Lactància acumulada", "Reducció de jornada",
+    "Exàmens prenatals", "Sense sou", "Violència de gènere",
+    "Assistència mèdica familiars", "Adopció / acolliment", "Jubilació parcial"
 ]
 
 def enviar_missatge(destinatari, missatge):
@@ -63,7 +63,7 @@ def generar_resposta(pregunta):
     resposta = client.chat.completions.create(
         model="gpt-3.5-turbo",
         messages=[
-            {"role": "system", "content": "Respon segons el context proporcionat. Si no tens prou informaciÃ³, digues-ho."},
+            {"role": "system", "content": "Respon segons el context proporcionat. Si no tens prou informació, digues-ho."},
             {"role": "user", "content": f"Context:\n{context}\n\nPregunta: {pregunta}"}
         ]
     )
@@ -77,7 +77,7 @@ def index():
 def verificar_webhook():
     if request.args.get("hub.verify_token") == "ccoo2025":
         return request.args.get("hub.challenge")
-    return "Token invÃ lid", 403
+    return "Token invàlid", 403
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
@@ -114,13 +114,13 @@ def webhook():
     elif session["state"] == "menu":
         if text in ["1", "permisos"]:
             llistat = "\n".join([f"{i+1} - {nom}" for i, nom in enumerate(PERMISOS_LISTA)])
-            enviar_missatge(sender, f"Consulta de permisos laborals.\nEscriu el nÃºmero o el nom del permÃ­s que vols consultar:\n\n{llistat}")
-            session["state"] = "esperant_permÃ­s"
+            enviar_missatge(sender, f"Consulta de permisos laborals.\nEscriu el número o el nom del permís que vols consultar:\n\n{llistat}")
+            session["state"] = "esperant_permís"
         elif text in ["2", "altres"]:
-            enviar_missatge(sender, "Per altres consultes, pots escriure a: ccoometro@tmb.cat\n\nVols fer una nova consulta? (sÃ­ / no)")
+            enviar_missatge(sender, "Per altres consultes, pots escriure a: ccoometro@tmb.cat\n\nVols fer una nova consulta? (sí / no)")
             session["state"] = "post_resposta"
 
-    elif session["state"] == "esperant_permÃ­s":
+    elif session["state"] == "esperant_permís":
         try:
             idx = int(text) - 1
             consulta = PERMISOS_LISTA[idx] if 0 <= idx < len(PERMISOS_LISTA) else text
@@ -129,26 +129,25 @@ def webhook():
         resposta = generar_resposta(consulta)
         enviar_missatge(sender, resposta)
         if not session["file_sent"]:
-            enviar_missatge(sender, "Vols descarregar la taula oficial de permisos? (sÃ­ / no)")
+            enviar_missatge(sender, "Vols descarregar la taula oficial de permisos? (sí / no)")
             session["state"] = "esperant_pdf"
         else:
-            enviar_missatge(sender, "Vols fer una nova consulta? (sÃ­ / no)")
+            enviar_missatge(sender, "Vols fer una nova consulta? (sí / no)")
             session["state"] = "post_resposta"
 
     elif session["state"] == "esperant_pdf":
-        if text == "sÃ­":
+        if text == "sí":
             enviar_document(sender)
             session["file_sent"] = True
-        enviar_missatge(sender, "Vols fer una nova consulta? (sÃ­ / no)")
+        enviar_missatge(sender, "Vols fer una nova consulta? (sí / no)")
         session["state"] = "post_resposta"
 
     elif session["state"] == "post_resposta":
-        if text == "sÃ­":
+        if text == "sí":
             enviar_missatge(sender, missatge_benvinguda())
             session["state"] = "menu"
         elif text == "no":
-            enviar_missatge(sender, "GrÃ cies per utilitzar lâ€™assistent virtual de CCOO.
-Si mÃ©s endavant vols tornar a fer una consulta, escriu la paraula CCOO.")
+            enviar_missatge(sender, "Gràcies per utilitzar l’assistent virtual de CCOO.\nSi més endavant vols tornar a fer una consulta, escriu la paraula CCOO.")
             session["active"] = False
 
     user_sessions[sender] = session
@@ -156,20 +155,12 @@ Si mÃ©s endavant vols tornar a fer una consulta, escriu la paraula CCOO.")
 
 def missatge_benvinguda():
     return (
-        "Benvingut/da a lâ€™assistent virtual de CCOO Metro de Barcelona.
-
-"
-        "Soc aquÃ­ per ajudar-te a resoldre dubtes.
-"
-        "Selecciona una de les segÃ¼ents opcions:
-
-"
-        "1 - Permisos laborals
-"
-        "2 - Altres consultes
-
-"
-        "Escriu a continuaciÃ³ el nÃºmero o el nom de lâ€™opciÃ³ que vols consultar."
+        "Benvingut/da a l’assistent virtual de CCOO Metro de Barcelona.\n\n"
+        "Soc aquí per ajudar-te a resoldre dubtes.\n"
+        "Selecciona una de les següents opcions:\n\n"
+        "1 - Permisos laborals\n"
+        "2 - Altres consultes\n\n"
+        "Escriu a continuació el número o el nom de l’opció que vols consultar."
     )
 
 if __name__ == "__main__":
