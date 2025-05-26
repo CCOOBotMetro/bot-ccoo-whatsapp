@@ -82,9 +82,19 @@ def verificar_webhook():
 @app.route("/webhook", methods=["POST"])
 def webhook():
     dades = request.get_json()
-    message = dades["entry"][0]["changes"][0]["value"]["messages"][0]
-    sender = message["from"]
-    text = message["text"]["body"].strip().lower()
+
+    try:
+        entry = dades.get("entry", [])[0]
+        change = entry.get("changes", [])[0]
+        value = change.get("value", {})
+        if "messages" not in value:
+            return "OK", 200
+        message = value["messages"][0]
+        sender = message["from"]
+        text = message["text"]["body"].strip().lower()
+    except Exception as e:
+        print(f"Error llegint el missatge: {e}")
+        return "OK", 200
 
     now = datetime.utcnow()
     session = user_sessions.get(sender, {
