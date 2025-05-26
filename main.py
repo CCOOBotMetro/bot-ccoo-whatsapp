@@ -59,12 +59,17 @@ def enviar_document(destinatari):
 def generar_resposta(pregunta):
     embedding = client.embeddings.create(input=pregunta, model="text-embedding-3-small").data[0].embedding
     D, I = index.search(np.array([embedding]).astype("float32"), 3)
-    context = "\n---\n".join([chunk_texts[i] for i in I[0]])
+    context = "
+---
+".join([chunk_texts[i] for i in I[0]])
     resposta = client.chat.completions.create(
         model="gpt-3.5-turbo",
         messages=[
             {"role": "system", "content": "Respon segons el context proporcionat. Si no tens prou informaciÃ³, digues-ho."},
-            {"role": "user", "content": f"Context:\n{context}\n\nPregunta: {pregunta}"}
+            {"role": "user", "content": f"Context:
+{context}
+
+Pregunta: {pregunta}"}
         ]
     )
     return resposta.choices[0].message.content
@@ -113,11 +118,17 @@ def webhook():
 
     elif session["state"] == "menu":
         if text in ["1", "permisos"]:
-            llistat = "\n".join([f"{i+1} - {nom}" for i, nom in enumerate(PERMISOS_LISTA)])
-            enviar_missatge(sender, f"Consulta de permisos laborals.\nEscriu el nÃºmero o el nom del permÃ­s que vols consultar:\n\n{llistat}")
+            llistat = "
+".join([f"{i+1} - {nom}" for i, nom in enumerate(PERMISOS_LISTA)])
+            enviar_missatge(sender, f"Consulta de permisos laborals.
+Escriu el nÃºmero o el nom del permÃ­s que vols consultar:
+
+{llistat}")
             session["state"] = "esperant_permÃ­s"
         elif text in ["2", "altres"]:
-            enviar_missatge(sender, "Per altres consultes, pots escriure a: ccoometro@tmb.cat\n\nVols fer una nova consulta? (sÃ­ / no)")
+            enviar_missatge(sender, "Per altres consultes, pots escriure a: ccoometro@tmb.cat
+
+Vols fer una nova consulta? (sÃ­ / no)")
             session["state"] = "post_resposta"
 
     elif session["state"] == "esperant_permÃ­s":
