@@ -58,8 +58,7 @@ def enviar_document(destinatari):
 
 def generar_resposta(pregunta):
     embedding = client.embeddings.create(input=pregunta, model="text-embedding-3-small").data[0].embedding
-    D, I = index.search(np.array([embedding]).astype("float32"), 3)
-    context = "
+    D, I = context = "\n---\n".join([chunk_texts[i] for i in I[0]])
 ---
 ".join([chunk_texts[i] for i in I[0]])
     resposta = client.chat.completions.create(
