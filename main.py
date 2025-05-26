@@ -15,15 +15,71 @@ with open("index.pkl", "rb") as f:
 with open("chunks.pkl", "rb") as f:
     chunk_texts = pickle.load(f)
 
+assert hasattr(index, "search"), "L'objecte FAISS no Ã©s vÃ lid."
+
 user_sessions = {}
 PERMISOS_LISTA = [
     "Matrimoni", "Canvi de domicili", "Naixement i cura de menor",
-    "Visites mèdiques", "Exàmens oficials", "Defunció de familiar",
-    "Assumptes propis", "Deures públics", "Judici per empresa",
-    "Cura fills menors", "Lactància acumulada", "Reducció de jornada",
-    "Exàmens prenatals", "Sense sou", "Violència de gènere",
-    "Assistència mèdica familiars", "Adopció / acolliment", "Jubilació parcial"
+    "Visites mÃ¨diques", "ExÃ mens oficials", "DefunciÃ³ de familiar",
+    "Assumptes propis", "Deures pÃºblics", "Judici per empresa",
+    "Cura fills menors", "LactÃ ncia acumulada", "ReducciÃ³ de jornada",
+    "ExÃ mens prenatals", "Sense sou", "ViolÃ¨ncia de gÃ¨nere",
+    "AssistÃ¨ncia mÃ¨dica familiars", "AdopciÃ³ / acolliment", "JubilaciÃ³ parcial"
 ]
+
+def detectar_idioma(text):
+    esp = ["permiso", "consulta", "gracias", "usted", "quiero", "otra"]
+    return "es" if any(p in text.lower() for p in esp) else "ca"
+
+def missatge_benvinguda(lang):
+    if lang == "es":
+        return (
+            "Bienvenido/a al asistente virtual de CCOO Metro de Barcelona.
+
+"
+            "Estoy aquÃ­ para ayudarte a resolver tus dudas.
+"
+            "Selecciona una de las siguientes opciones:
+
+"
+            "1 - Permisos laborales
+"
+            "2 - Otras consultas
+
+"
+            "Escribe el nÃºmero o el nombre de la opciÃ³n que quieres consultar."
+        )
+    return (
+        "Benvingut/da a lâ€™assistent virtual de CCOO Metro de Barcelona.
+
+"
+        "Soc aquÃ­ per ajudar-te a resoldre dubtes.
+"
+        "Selecciona una de les segÃ¼ents opcions:
+
+"
+        "1 - Permisos laborals
+"
+        "2 - Altres consultes
+
+"
+        "Escriu a continuaciÃ³ el nÃºmero o el nom de lâ€™opciÃ³ que vols consultar."
+    )
+
+def text_nova_consulta(lang):
+    return "Â¿Quieres realizar otra consulta? (sÃ­ / no)" if lang == "es" else "Vols fer una nova consulta? (sÃ­ / no)"
+
+def text_descarregar_pdf(lang):
+    return "Â¿Quieres descargar la tabla oficial de permisos? (sÃ­ / no)" if lang == "es" else "Vols descarregar la taula oficial de permisos? (sÃ­ / no)"
+
+def text_final(lang):
+    return (
+        "Gracias por utilizar el asistente virtual de CCOO.
+Si mÃ¡s adelante quieres hacer otra consulta, escribe la palabra CCOO."
+        if lang == "es" else
+        "GrÃ cies per utilitzar lâ€™assistent virtual de CCOO.
+Si mÃ©s endavant vols tornar a fer una consulta, escriu la paraula CCOO."
+    )
 
 def enviar_missatge(destinatari, missatge):
     url = f"https://graph.facebook.com/v18.0/{os.environ['PHONE_NUMBER_ID']}/messages"
@@ -63,7 +119,7 @@ def generar_resposta(pregunta):
     resposta = client.chat.completions.create(
         model="gpt-3.5-turbo",
         messages=[
-            {"role": "system", "content": "Respon segons el context proporcionat. Si no tens prou informació, digues-ho."},
+            {"role": "system", "content": "Respon segons el context proporcionat. Si no tens prou informaciÃ³, digues-ho."},
             {"role": "user", "content": f"Context:\n{context}\n\nPregunta: {pregunta}"}
         ]
     )
@@ -77,7 +133,7 @@ def index():
 def verificar_webhook():
     if request.args.get("hub.verify_token") == "ccoo2025":
         return request.args.get("hub.challenge")
-    return "Token invàlid", 403
+    return "Token invÃ lid", 403
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
@@ -96,41 +152,51 @@ def webhook():
         print(f"Error llegint el missatge: {e}")
         return "OK", 200
 
+    lang = detectar_idioma(text)
     now = datetime.utcnow()
     session = user_sessions.get(sender, {
         "active": True,
         "file_sent": False,
         "state": "inici",
-        "last_active": now
+        "last_active": now,
+        "lang": lang
     })
 
+    session["lang"] = lang
     if (now - session["last_active"]).total_seconds() > 600:
-        session = {"active": True, "file_sent": False, "state": "inici", "last_active": now}
-        enviar_missatge(sender, missatge_benvinguda())
+        session = {"active": True, "file_sent": False, "state": "inici", "last_active": now, "lang": lang}
+        enviar_missatge(sender, missatge_benvinguda(lang))
 
     session["last_active"] = now
 
     if not session["active"]:
         if text == "ccoo":
-            session = {"active": True, "file_sent": False, "state": "inici", "last_active": now}
-            enviar_missatge(sender, missatge_benvinguda())
+            session = {"active": True, "file_sent": False, "state": "inici", "last_active": now, "lang": lang}
+            enviar_missatge(sender, missatge_benvinguda(lang))
         user_sessions[sender] = session
         return "OK", 200
 
     if session["state"] == "inici":
-        enviar_missatge(sender, missatge_benvinguda())
+        enviar_missatge(sender, missatge_benvinguda(lang))
         session["state"] = "menu"
 
     elif session["state"] == "menu":
-        if text in ["1", "permisos"]:
+        if text in ["1", "permisos", "permÃ­s", "permiso"]:
             llistat = "\n".join([f"{i+1} - {nom}" for i, nom in enumerate(PERMISOS_LISTA)])
-            enviar_missatge(sender, f"Consulta de permisos laborals.\nEscriu el número o el nom del permís que vols consultar:\n\n{llistat}")
-            session["state"] = "esperant_permís"
-        elif text in ["2", "altres"]:
-            enviar_missatge(sender, "Per altres consultes, pots escriure a: ccoometro@tmb.cat\n\nVols fer una nova consulta? (sí / no)")
+            enviar_missatge(sender, f"Consulta de permisos laborals.\nEscriu el nÃºmero o el nom del permÃ­s que vols consultar:\n\n{llistat}")
+            session["state"] = "esperant_permÃ­s"
+        elif text in ["2", "altres", "otras", "otros"]:
+            msg = (
+                "Para otras consultas, puedes escribir a: ccoometro@tmb.cat"
+                if lang == "es"
+                else "Per altres consultes, pots escriure a: ccoometro@tmb.cat"
+            )
+            enviar_missatge(sender, f"{msg}
+
+{text_nova_consulta(lang)}")
             session["state"] = "post_resposta"
 
-    elif session["state"] == "esperant_permís":
+    elif session["state"] == "esperant_permÃ­s":
         try:
             idx = int(text) - 1
             consulta = PERMISOS_LISTA[idx] if 0 <= idx < len(PERMISOS_LISTA) else text
@@ -143,39 +209,29 @@ def webhook():
             enviar_missatge(sender, f"Error generant la resposta: {str(e)}")
 
         if not session["file_sent"]:
-            enviar_missatge(sender, "Vols descarregar la taula oficial de permisos? (sí / no)")
+            enviar_missatge(sender, text_descarregar_pdf(lang))
             session["state"] = "esperant_pdf"
         else:
-            enviar_missatge(sender, "Vols fer una nova consulta? (sí / no)")
+            enviar_missatge(sender, text_nova_consulta(lang))
             session["state"] = "post_resposta"
 
     elif session["state"] == "esperant_pdf":
-        if text == "sí":
+        if text == "sÃ­":
             enviar_document(sender)
             session["file_sent"] = True
-        enviar_missatge(sender, "Vols fer una nova consulta? (sí / no)")
+        enviar_missatge(sender, text_nova_consulta(lang))
         session["state"] = "post_resposta"
 
     elif session["state"] == "post_resposta":
-        if text == "sí":
-            enviar_missatge(sender, missatge_benvinguda())
+        if text == "sÃ­":
+            enviar_missatge(sender, missatge_benvinguda(lang))
             session["state"] = "menu"
         elif text == "no":
-            enviar_missatge(sender, "Gràcies per utilitzar l’assistent virtual de CCOO.\nSi més endavant vols tornar a fer una consulta, escriu la paraula CCOO.")
+            enviar_missatge(sender, text_final(lang))
             session["active"] = False
 
     user_sessions[sender] = session
     return "OK", 200
-
-def missatge_benvinguda():
-    return (
-        "Benvingut/da a l’assistent virtual de CCOO Metro de Barcelona.\n\n"
-        "Soc aquí per ajudar-te a resoldre dubtes.\n"
-        "Selecciona una de les següents opcions:\n\n"
-        "1 - Permisos laborals\n"
-        "2 - Altres consultes\n\n"
-        "Escriu a continuació el número o el nom de l’opció que vols consultar."
-    )
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
