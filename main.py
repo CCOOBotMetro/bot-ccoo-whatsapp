@@ -147,7 +147,8 @@ def webhook():
             enviar_missatge(sender, missatge_benvinguda())
             session["state"] = "menu"
         elif text == "no":
-            enviar_missatge(sender, "GrÃ cies per utilitzar lâ€™assistent virtual de CCOO.\nSi mÃ©s endavant vols tornar a fer una consulta, escriu la paraula CCOO.")
+            enviar_missatge(sender, "GrÃ cies per utilitzar lâ€™assistent virtual de CCOO.
+Si mÃ©s endavant vols tornar a fer una consulta, escriu la paraula CCOO.")
             session["active"] = False
 
     user_sessions[sender] = session
@@ -155,11 +156,19 @@ def webhook():
 
 def missatge_benvinguda():
     return (
-        "Benvingut/da a lâ€™assistent virtual de CCOO Metro de Barcelona.\n\n"
-        "Soc aquÃ­ per ajudar-te a resoldre dubtes.\n"
-        "Selecciona una de les segÃ¼ents opcions:\n\n"
-        "1 - Permisos laborals\n"
-        "2 - Altres consultes\n\n"
+        "Benvingut/da a lâ€™assistent virtual de CCOO Metro de Barcelona.
+
+"
+        "Soc aquÃ­ per ajudar-te a resoldre dubtes.
+"
+        "Selecciona una de les segÃ¼ents opcions:
+
+"
+        "1 - Permisos laborals
+"
+        "2 - Altres consultes
+
+"
         "Escriu a continuaciÃ³ el nÃºmero o el nom de lâ€™opciÃ³ que vols consultar."
     )
 
