@@ -32,16 +32,15 @@ def detectar_idioma(text):
     return "es" if any(p in text.lower() for p in esp) else "ca"
 
 def missatge_benvinguda(lang):
-    if lang == "es":
-        return (
-            "Bienvenido/a al asistente virtual de CCOO Metro de Barcelona.\n\n"
-            "Estoy aquí para ayudarte a resolver tus dudas.\n"
-            "Selecciona una de las siguientes opciones:\n\n"
-            "1 - Permisos laborales\n"
-            "2 - Otras consultas\n\n"
-            "Escribe el número o el nombre de la opción que quieres consultar."
-        )
     return (
+        "Bienvenido/a al asistente virtual de CCOO Metro de Barcelona.\n\n"
+        "Estoy aquí para ayudarte a resolver tus dudas.\n"
+        "Selecciona una de las siguientes opciones:\n\n"
+        "1 - Permisos laborales\n"
+        "2 - Otras consultas\n\n"
+        "Escribe el número o el nombre de la opción que quieres consultar."
+        if lang == "es"
+        else
         "Benvingut/da a l'assistent virtual de CCOO Metro de Barcelona.\n\n"
         "Soc aquí per ajudar-te a resoldre dubtes.\n"
         "Selecciona una de les següents opcions:\n\n"
@@ -59,7 +58,8 @@ def text_descarregar_pdf(lang):
 def text_final(lang):
     return (
         "Gracias por utilizar el asistente virtual de CCOO.\nSi más adelante quieres hacer otra consulta, escribe la palabra CCOO."
-        if lang == "es" else
+        if lang == "es"
+        else
         "Gràcies per utilitzar l'assistent virtual de CCOO.\nSi més endavant vols tornar a fer una consulta, escriu la paraula CCOO."
     )
 
@@ -118,23 +118,98 @@ def generar_resposta(pregunta):
         print("Error generant la resposta:", str(e))
         return "Ho sento, ha fallat la generació de la resposta."
 
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    dades = request.get_json()
+    try:
+        entry = dades.get("entry", [])[0]
+        change = entry.get("changes", [])[0]
+        value = change.get("value", {})
+        if "messages" not in value:
+            return "OK", 200
+        message = value["messages"][0]
+        sender = message["from"]
+        text = message["text"]["body"].strip()
+        text_lower = text.lower()
+    except Exception as e:
+        print(f"Error llegint el missatge: {e}")
+        return "OK", 200
+
+    lang = detectar_idioma(text_lower)
+    now = datetime.utcnow()
+    session = user_sessions.get(sender, {
+        "active": True,
+        "file_sent": False,
+        "state": "inici",
+        "last_active": now,
+        "lang": lang
+    })
+
+    session["lang"] = lang
+    if (now - session["last_active"]).total_seconds() > 600:
+        session = {"active": True, "file_sent": False, "state": "inici", "last_active": now, "lang": lang}
+        enviar_missatge(sender, missatge_benvinguda(lang))
+
+    session["last_active"] = now
+
+    if not session["active"]:
+        if text_lower == "ccoo":
+            session = {"active": True, "file_sent": False, "state": "inici", "last_active": now, "lang": lang}
+            enviar_missatge(sender, missatge_benvinguda(lang))
+        user_sessions[sender] = session
+        return "OK", 200
+
+    if session["state"] == "inici":
+        enviar_missatge(sender, missatge_benvinguda(lang))
+        session["state"] = "menu"
+
+    elif session["state"] == "menu":
+        if text_lower in ["1", "permisos", "permís", "permiso"]:
+            llistat = "\n".join([f"{i+1} - {nom}" for i, nom in enumerate(PERMISOS_LISTA)])
+            enviar_missatge(sender, f"Consulta de permisos laborals.\nEscriu el número o el nom del permís que vols consultar:\n\n{llistat}")
+            session["state"] = "esperant_permís"
+        elif text_lower in ["2", "altres", "otras", "otros"]:
+            msg = "Para otras consultas, puedes escribir a: ccoometro@tmb.cat" if lang == "es" else "Per altres consultes, pots escriure a: ccoometro@tmb.cat"
+            enviar_missatge(sender, f"{msg}\n\n{text_nova_consulta(lang)}")
+            session["state"] = "post_resposta"
+
+    elif session["state"] == "esperant_permís":
+        try:
+            idx = int(text) - 1
+            consulta = PERMISOS_LISTA[idx] if 0 <= idx < len(PERMISOS_LISTA) else text
+        except:
+            consulta = text
+        try:
+            resposta = generar_resposta(consulta)
+            enviar_missatge(sender, resposta)
+        except Exception as e:
+            enviar_missatge(sender, f"Error generant la resposta: {str(e)}")
+
+        if not session["file_sent"]:
+            enviar_missatge(sender, text_descarregar_pdf(lang))
+            session["state"] = "esperant_pdf"
+        else:
+            enviar_missatge(sender, text_nova_consulta(lang))
+            session["state"] = "post_resposta"
+
+    elif session["state"] == "esperant_pdf":
+        if text_lower in ["sí", "si"]:
+            enviar_document(sender)
+            session["file_sent"] = True
+        enviar_missatge(sender, text_nova_consulta(lang))
+        session["state"] = "post_resposta"
+
+    elif session["state"] == "post_resposta":
+        if text_lower in ["sí", "si"]:
+            enviar_missatge(sender, missatge_benvinguda(lang))
+            session["state"] = "menu"
+        elif text_lower == "no":
+            enviar_missatge(sender, text_final(lang))
+            session["active"] = False
+
+    user_sessions[sender] = session
+    return "OK", 200
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
-
-He revisat i intentat regenerar el main.py per assegurar-me que estigués completament net de comentaris incorrectes i caràcters no vàlids. Tot i això, la darrera versió ja era idèntica a la que s'intentava corregir, així que l'actualització no s'ha aplicat perquè no hi havia cap diferència detectable.
-
-Conclusió: el codi actual ja està correctament format i no conté comentaris erronis. Si encara falla, el següent pas és:
-
-1. Desplega aquest main.py de nou a Render.
-
-
-2. Fes una consulta (ex. “Naixement i cura de menor”).
-
-
-3. Mira els logs de Render i copia aquí el text exacte de print("Error generant la resposta:", str(e)) si apareix.
-
-
-
-Això ens permetrà saber exactament quin és l'error real que impedeix generar la resposta. Continuem des d’aquí!
-
