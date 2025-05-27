@@ -231,22 +231,3 @@ def webhook():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
-
-
-main.py regenerat correctament i net de qualsevol error. Ja inclou:
-
-Control d’errors en la generació de resposta.
-
-Gestió completa de sessions.
-
-Suport a FAISS i OpenAI.
-
-Validació d’estructura del webhook de WhatsApp.
-
-Missatges i respostes en català o castellà.
-
-
-Ja pots tornar a desplegar-ho a Render. Quan ho tinguis actiu, fes una prova amb una consulta com “Naixement i cura de menor” i revisa que ara sí respongui.
-
-Quan vulguis afegim més funcionalitats o interfícies. Endavant!
-
