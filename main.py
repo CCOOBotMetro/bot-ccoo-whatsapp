@@ -125,7 +125,7 @@ if __name__ == "__main__":
 
 main.py regenerat i corregit amb:
 
-Canvi del model d’embeddings a text-embedding-ada-002.
+# Canvi del model d'embeddings a text-embedding-ada-002
 
 Impressió clara de l’error si falla la generació de la resposta (print("Error generant la resposta:", str(e))).
 
