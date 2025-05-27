@@ -95,17 +95,30 @@ def enviar_document(destinatari):
     requests.post(url, headers=headers, json=data)
 
 def generar_resposta(pregunta):
-    embedding = client.embeddings.create(input=pregunta, model="text-embedding-3-small").data[0].embedding
-    D, I = index.search(np.array([embedding]).astype("float32"), 3)
-    context = "\n---\n".join([chunk_texts[i] for i in I[0]])
-    resposta = client.chat.completions.create(
-        model="gpt-3.5-turbo",
-        messages=[
-            {"role": "system", "content": "Respon segons el context proporcionat. Si no tens prou informació, digues-ho."},
-            {"role": "user", "content": f"Context:\n{context}\n\nPregunta: {pregunta}"}
-        ]
-    )
-    return resposta.choices[0].message.content
+    try:
+        embedding = client.embeddings.create(
+            input=pregunta,
+            model="text-embedding-3-small"
+        ).data[0].embedding
+
+        D, I = index.search(np.array([embedding]).astype("float32"), 3)
+        context = "\n---\n".join([chunk_texts[i] for i in I[0]])
+
+        print("Context FAISS:", context)
+
+        resposta = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "Respon segons el context proporcionat. Si no tens prou informació, digues-ho."},
+                {"role": "user", "content": f"Context:\n{context}\n\nPregunta: {pregunta}"}
+            ]
+        )
+
+        return resposta.choices[0].message.content
+
+    except Exception as e:
+        print("Error generant la resposta:", str(e))
+        return "Ho sento, ha fallat la generació de la resposta."
 
 @app.route("/", methods=["GET"])
 def index():
@@ -220,3 +233,18 @@ def webhook():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
+
+Ja tens integrat al teu main.py el control d’errors i print() dins de la funció generar_resposta(). Ara:
+
+1. Quan facis una consulta, veuràs al log de Render el context que es genera.
+
+
+2. Si falla la crida a OpenAI o FAISS, rebràs un missatge informatiu.
+
+
+
+Fes una prova real escrivint un permís (per exemple, "naixement de fill/a" o "matrimoni") i copia'm aquí el que surt al log si continua sense respondre.
+
+Així sabrem si el problema és en el context, l’embedding o la resposta del model. Som-hi!
+
