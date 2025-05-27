@@ -136,4 +136,30 @@ def send_whatsapp_message(to, text):
         "Content-Type": "application/json"
     }
     payload = {
-        "messaging_product":
+        "messaging_product": "whatsapp",
+        "to": to,
+        "type": "text",
+        "text": {"body": text}
+    }
+    requests.post(url, headers=headers, json=payload)
+    return "OK", 200
+
+def send_document(to, media_id):
+    url = "https://graph.facebook.com/v18.0/580162021858021/messages"
+    headers = {
+        "Authorization": f"Bearer {os.environ.get('WHATSAPP_TOKEN')}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to,
+        "type": "document",
+        "document": {
+            "id": media_id,
+            "caption": "Quadre oficial de permisos laborals FMB"
+        }
+    }
+    requests.post(url, headers=headers, json=payload)
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=10000)
