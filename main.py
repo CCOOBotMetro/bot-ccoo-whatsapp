@@ -50,10 +50,12 @@ PERMISSIONS_LIST = {
 
 PDF_MEDIA_ID = "637788649308962"
 
+
 def detect_language(text):
     if any(word in text.lower() for word in ["bon dia", "permissos", "opció", "consulta"]):
         return "ca"
     return "es"
+
 
 def reset_user_state(user_id):
     user_states[user_id] = {
@@ -64,12 +66,14 @@ def reset_user_state(user_id):
         "pdf_sent": False
     }
 
+
 def check_inactivity(user_id):
     now = datetime.utcnow()
     if user_id in user_states:
         last_time = user_states[user_id].get("last_interaction")
         if last_time and now - last_time > timedelta(minutes=10):
             reset_user_state(user_id)
+
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
@@ -129,6 +133,7 @@ def webhook():
 
     return "OK", 200
 
+
 def send_whatsapp_message(to, text):
     url = "https://graph.facebook.com/v18.0/580162021858021/messages"
     headers = {
@@ -143,6 +148,7 @@ def send_whatsapp_message(to, text):
     }
     requests.post(url, headers=headers, json=payload)
     return "OK", 200
+
 
 def send_document(to, media_id):
     url = "https://graph.facebook.com/v18.0/580162021858021/messages"
@@ -160,6 +166,7 @@ def send_document(to, media_id):
         }
     }
     requests.post(url, headers=headers, json=payload)
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
