@@ -1,172 +1,222 @@
-# -*- coding: utf-8 -*-
 import os
-from flask import Flask, request
-import openai
 import requests
-from datetime import datetime, timedelta
+import pickle
+import faiss
+import numpy as np
+from flask import Flask, request
+from openai import OpenAI
+from datetime import datetime
 
 app = Flask(__name__)
+client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
-openai.api_key = os.environ.get("OPENAI_API_KEY")
-user_states = {}
+with open("index.pkl", "rb") as f:
+    index = pickle.load(f)
+with open("chunks.pkl", "rb") as f:
+    chunk_texts = pickle.load(f)
 
-WELCOME_MESSAGE = {
-    "ca": (
+assert hasattr(index, "search"), "L'objecte FAISS no és vàlid."
+
+user_sessions = {}
+PERMISOS_LISTA = [
+    "Matrimoni", "Canvi de domicili", "Naixement i cura de menor",
+    "Visites mèdiques", "Exàmens oficials", "Defunció de familiar",
+    "Assumptes propis", "Deures públics", "Judici per empresa",
+    "Cura fills menors", "Lactància acumulada", "Reducció de jornada",
+    "Exàmens prenatals", "Sense sou", "Violència de gènere",
+    "Assistència mèdica familiars", "Adopció / acolliment", "Jubilació parcial"
+]
+
+def detectar_idioma(text):
+    esp = ["permiso", "consulta", "gracias", "usted", "quiero", "otra"]
+    return "es" if any(p in text.lower() for p in esp) else "ca"
+
+def missatge_benvinguda(lang):
+    if lang == "es":
+        return (
+            "Bienvenido/a al asistente virtual de CCOO Metro de Barcelona.\n\n"
+            "Estoy aquí para ayudarte a resolver tus dudas.\n"
+            "Selecciona una de las siguientes opciones:\n\n"
+            "1 - Permisos laborales\n"
+            "2 - Otras consultas\n\n"
+            "Escribe el número o el nombre de la opción que quieres consultar."
+        )
+    return (
         "Benvingut/da a l’assistent virtual de CCOO Metro de Barcelona.\n\n"
         "Soc aquí per ajudar-te a resoldre dubtes.\n"
         "Selecciona una de les següents opcions:\n\n"
         "1 - Permisos laborals\n"
         "2 - Altres consultes\n\n"
         "Escriu a continuació el número o el nom de l’opció que vols consultar."
-    ),
-    "es": (
-        "Bienvenido/a al asistente virtual de CCOO Metro de Barcelona.\n\n"
-        "Estoy aquí para ayudarte a resolver dudas.\n"
-        "Selecciona una de las siguientes opciones:\n\n"
-        "1 - Permisos laborales\n"
-        "2 - Otras consultas\n\n"
-        "Escribe a continuación el número o el nombre de la opción que quieres consultar."
     )
-}
 
-PERMISSIONS_LIST = {
-    "ca": (
-        "Aquí tens la llista de permisos disponibles:\n"
-        "1 - Matrimoni\n"
-        "2 - Naixement de fill/a\n"
-        "3 - Defunció de familiar\n"
-        "... (falten afegir tots)\n"
-        "Escriu el número o el nom del permís que vols consultar."
-    ),
-    "es": (
-        "Aquí tienes la lista de permisos disponibles:\n"
-        "1 - Matrimonio\n"
-        "2 - Nacimiento de hijo/a\n"
-        "3 - Fallecimiento de familiar\n"
-        "... (faltan por añadir todos)\n"
-        "Escribe el número o el nombre del permiso que quieres consultar."
+def text_nova_consulta(lang):
+    return "¿Quieres realizar otra consulta? (sí / no)" if lang == "es" else "Vols fer una nova consulta? (sí / no)"
+
+def text_descarregar_pdf(lang):
+    return "¿Quieres descargar la tabla oficial de permisos? (sí / no)" if lang == "es" else "Vols descarregar la taula oficial de permisos? (sí / no)"
+
+def text_final(lang):
+    return (
+        "Gracias por utilizar el asistente virtual de CCOO.\nSi más adelante quieres hacer otra consulta, escribe la palabra CCOO."
+        if lang == "es" else
+        "Gràcies per utilitzar l’assistent virtual de CCOO.\nSi més endavant vols tornar a fer una consulta, escriu la paraula CCOO."
     )
-}
 
-PDF_MEDIA_ID = "637788649308962"
-
-
-def detect_language(text):
-    if any(word in text.lower() for word in ["bon dia", "permissos", "opció", "consulta"]):
-        return "ca"
-    return "es"
-
-
-def reset_user_state(user_id):
-    user_states[user_id] = {
-        "active": True,
-        "last_interaction": datetime.utcnow(),
-        "language": "ca",
-        "stage": "menu",
-        "pdf_sent": False
+def enviar_missatge(destinatari, missatge):
+    url = f"https://graph.facebook.com/v18.0/{os.environ['PHONE_NUMBER_ID']}/messages"
+    headers = {
+        "Authorization": f"Bearer {os.environ['WHATSAPP_TOKEN']}",
+        "Content-Type": "application/json"
     }
+    data = {
+        "messaging_product": "whatsapp",
+        "to": destinatari,
+        "type": "text",
+        "text": {"body": missatge}
+    }
+    requests.post(url, headers=headers, json=data)
 
+def enviar_document(destinatari):
+    url = f"https://graph.facebook.com/v18.0/{os.environ['PHONE_NUMBER_ID']}/messages"
+    headers = {
+        "Authorization": f"Bearer {os.environ['WHATSAPP_TOKEN']}",
+        "Content-Type": "application/json"
+    }
+    data = {
+        "messaging_product": "whatsapp",
+        "to": destinatari,
+        "type": "document",
+        "document": {
+            "id": "1011069024514667",
+            "filename": "Quadre_permisos_FMB.pdf"
+        }
+    }
+    requests.post(url, headers=headers, json=data)
 
-def check_inactivity(user_id):
-    now = datetime.utcnow()
-    if user_id in user_states:
-        last_time = user_states[user_id].get("last_interaction")
-        if last_time and now - last_time > timedelta(minutes=10):
-            reset_user_state(user_id)
+def generar_resposta(pregunta):
+    embedding = client.embeddings.create(input=pregunta, model="text-embedding-3-small").data[0].embedding
+    D, I = index.search(np.array([embedding]).astype("float32"), 3)
+    context = "\n---\n".join([chunk_texts[i] for i in I[0]])
+    resposta = client.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=[
+            {"role": "system", "content": "Respon segons el context proporcionat. Si no tens prou informació, digues-ho."},
+            {"role": "user", "content": f"Context:\n{context}\n\nPregunta: {pregunta}"}
+        ]
+    )
+    return resposta.choices[0].message.content
 
+@app.route("/", methods=["GET"])
+def index():
+    return "Bot viu!", 200
+
+@app.route("/webhook", methods=["GET"])
+def verificar_webhook():
+    if request.args.get("hub.verify_token") == "ccoo2025":
+        return request.args.get("hub.challenge")
+    return "Token invàlid", 403
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    data = request.get_json()
-    message = data["messages"][0]
-    user_text = message.get("text", {}).get("body", "").strip()
-    user_id = message["from"]
+    dades = request.get_json()
 
-    check_inactivity(user_id)
-    state = user_states.get(user_id)
-
-    if not state or user_text.upper() == "CCOO":
-        reset_user_state(user_id)
-        lang = detect_language(user_text)
-        user_states[user_id]["language"] = lang
-        return send_whatsapp_message(user_id, WELCOME_MESSAGE[lang])
-
-    user_states[user_id]["last_interaction"] = datetime.utcnow()
-    lang = user_states[user_id]["language"]
-
-    if not user_states[user_id]["active"]:
+    try:
+        entry = dades.get("entry", [])[0]
+        change = entry.get("changes", [])[0]
+        value = change.get("value", {})
+        if "messages" not in value:
+            return "OK", 200
+        message = value["messages"][0]
+        sender = message["from"]
+        text = message["text"]["body"].strip()
+        text_lower = text.lower()
+    except Exception as e:
+        print(f"Error llegint el missatge: {e}")
         return "OK", 200
 
-    if user_text.lower() in ["1", "permisos", "permiso", "permís"]:
-        user_states[user_id]["stage"] = "permissions"
-        return send_whatsapp_message(user_id, PERMISSIONS_LIST[lang])
+    lang = detectar_idioma(text_lower)
+    now = datetime.utcnow()
+    session = user_sessions.get(sender, {
+        "active": True,
+        "file_sent": False,
+        "state": "inici",
+        "last_active": now,
+        "lang": lang
+    })
 
-    if user_states[user_id]["stage"] == "permissions":
-        text_response = f"Aquesta és la informació literal del permís: \"{user_text}\"."
-        send_whatsapp_message(user_id, text_response)
+    session["lang"] = lang
+    if (now - session["last_active"]).total_seconds() > 600:
+        session = {"active": True, "file_sent": False, "state": "inici", "last_active": now, "lang": lang}
+        enviar_missatge(sender, missatge_benvinguda(lang))
 
-        if not user_states[user_id]["pdf_sent"]:
-            user_states[user_id]["stage"] = "ask_pdf"
-            return send_whatsapp_message(user_id, "Vols descarregar la taula oficial de permisos? (sí / no)")
+    session["last_active"] = now
+
+    if not session["active"]:
+        if text_lower == "ccoo":
+            session = {"active": True, "file_sent": False, "state": "inici", "last_active": now, "lang": lang}
+            enviar_missatge(sender, missatge_benvinguda(lang))
+        user_sessions[sender] = session
+        return "OK", 200
+
+    if session["state"] == "inici":
+        enviar_missatge(sender, missatge_benvinguda(lang))
+        session["state"] = "menu"
+
+    elif session["state"] == "menu":
+        if text_lower in ["1", "permisos", "permís", "permiso"]:
+            llistat = "\n".join([f"{i+1} - {nom}" for i, nom in enumerate(PERMISOS_LISTA)])
+            enviar_missatge(sender, f"Consulta de permisos laborals.\nEscriu el número o el nom del permís que vols consultar:\n\n{llistat}")
+            session["state"] = "esperant_permís"
+        elif text_lower in ["2", "altres", "otras", "otros"]:
+            msg = (
+                "Para otras consultas, puedes escribir a: ccoometro@tmb.cat"
+                if lang == "es"
+                else "Per altres consultes, pots escriure a: ccoometro@tmb.cat"
+            )
+            enviar_missatge(sender, f"{msg}\n\n{text_nova_consulta(lang)}")
+            session["state"] = "post_resposta"
+
+    elif session["state"] == "esperant_permís":
+        try:
+            idx = int(text) - 1
+            if 0 <= idx < len(PERMISOS_LISTA):
+                consulta = PERMISOS_LISTA[idx]
+            else:
+                consulta = text
+        except:
+            consulta = text
+        try:
+            resposta = generar_resposta(consulta)
+            enviar_missatge(sender, resposta)
+        except Exception as e:
+            enviar_missatge(sender, f"Error generant la resposta: {str(e)}")
+
+        if not session["file_sent"]:
+            enviar_missatge(sender, text_descarregar_pdf(lang))
+            session["state"] = "esperant_pdf"
         else:
-            user_states[user_id]["stage"] = "ask_continue"
-            return send_whatsapp_message(user_id, "Vols fer una nova consulta? (sí / no)")
+            enviar_missatge(sender, text_nova_consulta(lang))
+            session["state"] = "post_resposta"
 
-    if user_states[user_id]["stage"] == "ask_pdf":
-        if user_text.lower() == "sí":
-            user_states[user_id]["pdf_sent"] = True
-            send_document(user_id, PDF_MEDIA_ID)
-        user_states[user_id]["stage"] = "ask_continue"
-        return send_whatsapp_message(user_id, "Vols fer una nova consulta? (sí / no)")
+    elif session["state"] == "esperant_pdf":
+        if text_lower == "sí" or text_lower == "si":
+            enviar_document(sender)
+            session["file_sent"] = True
+        enviar_missatge(sender, text_nova_consulta(lang))
+        session["state"] = "post_resposta"
 
-    if user_states[user_id]["stage"] == "ask_continue":
-        if user_text.lower() == "sí":
-            user_states[user_id]["stage"] = "menu"
-            return send_whatsapp_message(user_id, WELCOME_MESSAGE[lang])
-        elif user_text.lower() == "no":
-            user_states[user_id]["active"] = False
-            return send_whatsapp_message(user_id, "Gràcies per utilitzar l’assistent. Escriu \"CCOO\" per tornar a activar-lo.")
+    elif session["state"] == "post_resposta":
+        if text_lower == "sí" or text_lower == "si":
+            enviar_missatge(sender, missatge_benvinguda(lang))
+            session["state"] = "menu"
+        elif text_lower == "no":
+            enviar_missatge(sender, text_final(lang))
+            session["active"] = False
 
-    if user_text.lower() in ["2", "altres", "otras"]:
-        user_states[user_id]["stage"] = "menu"
-        return send_whatsapp_message(user_id, "Pots escriure la teva consulta a ccoometro@tmb.cat. Vols fer una altra consulta? (sí / no)")
-
+    user_sessions[sender] = session
     return "OK", 200
-
-
-def send_whatsapp_message(to, text):
-    url = "https://graph.facebook.com/v18.0/580162021858021/messages"
-    headers = {
-        "Authorization": f"Bearer {os.environ.get('WHATSAPP_TOKEN')}",
-        "Content-Type": "application/json"
-    }
-    payload = {
-        "messaging_product": "whatsapp",
-        "to": to,
-        "type": "text",
-        "text": {"body": text}
-    }
-    requests.post(url, headers=headers, json=payload)
-    return "OK", 200
-
-
-def send_document(to, media_id):
-    url = "https://graph.facebook.com/v18.0/580162021858021/messages"
-    headers = {
-        "Authorization": f"Bearer {os.environ.get('WHATSAPP_TOKEN')}",
-        "Content-Type": "application/json"
-    }
-    payload = {
-        "messaging_product": "whatsapp",
-        "to": to,
-        "type": "document",
-        "document": {
-            "id": media_id,
-            "caption": "Quadre oficial de permisos laborals FMB"
-        }
-    }
-    requests.post(url, headers=headers, json=payload)
-
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
