@@ -8,7 +8,6 @@ from openai import OpenAI
 from datetime import datetime
 app = Flask(__name__)
 client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
-# Carregar embeddings i textos
 with open("index.pkl", "rb") as f:
    index = pickle.load(f)
 with open("chunks.pkl", "rb") as f:
@@ -27,16 +26,15 @@ def detectar_idioma(text):
    esp = ["permiso", "consulta", "gracias", "usted", "quiero", "otra"]
    return "es" if any(p in text.lower() for p in esp) else "ca"
 def missatge_benvinguda(lang):
-   if lang == "es":
-       return (
-           "Bienvenido/a al asistente virtual de CCOO Metro de Barcelona.\n\n"
-           "Estoy aquí para ayudarte a resolver tus dudas.\n"
-           "Selecciona una de las siguientes opciones:\n\n"
-           "1 - Permisos laborales\n"
-           "2 - Otras consultas\n\n"
-           "Escribe el número o el nombre de la opción que quieres consultar."
-       )
    return (
+       "Bienvenido/a al asistente virtual de CCOO Metro de Barcelona.\n\n"
+       "Estoy aquí para ayudarte a resolver tus dudas.\n"
+       "Selecciona una de las siguientes opciones:\n\n"
+       "1 - Permisos laborales\n"
+       "2 - Otras consultas\n\n"
+       "Escribe el número o el nombre de la opción que quieres consultar."
+       if lang == "es"
+       else
        "Benvingut/da a l'assistent virtual de CCOO Metro de Barcelona.\n\n"
        "Soc aquí per ajudar-te a resoldre dubtes.\n"
        "Selecciona una de les següents opcions:\n\n"
@@ -51,7 +49,8 @@ def text_descarregar_pdf(lang):
 def text_final(lang):
    return (
        "Gracias por utilizar el asistente virtual de CCOO.\nSi más adelante quieres hacer otra consulta, escribe la palabra CCOO."
-       if lang == "es" else
+       if lang == "es"
+       else
        "Gràcies per utilitzar l'assistent virtual de CCOO.\nSi més endavant vols tornar a fer una consulta, escriu la paraula CCOO."
    )
 def enviar_missatge(destinatari, missatge):
@@ -97,7 +96,7 @@ def generar_resposta(pregunta):
        )
        return resposta.choices[0].message.content
    except Exception as e:
-       print("Error generant la resposta:", str(e))
+       print("❌ Error generant la resposta:", str(e))
        return "Ho sento, ha fallat la generació de la resposta."
 @app.route("/", methods=["GET"])
 def index():
