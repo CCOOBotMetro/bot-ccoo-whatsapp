@@ -50,7 +50,7 @@ def missatge_benvinguda(lang):
             "Escribe el nÃºmero o el nombre de la opciÃ³n que quieres consultar."
         )
     return (
-        "Benvingut/da a l'assistent virtual de CCOO Metro de Barcelona.
+        "Benvingut/da a lâ€™assistent virtual de CCOO Metro de Barcelona.
 
 "
         "Soc aquÃ­ per ajudar-te a resoldre dubtes.
@@ -63,7 +63,7 @@ def missatge_benvinguda(lang):
         "2 - Altres consultes
 
 "
-        "Escriu a continuaciÃ³ el nÃºmero o el nom de l'opciÃ³ que vols consultar."
+        "Escriu a continuaciÃ³ el nÃºmero o el nom de lâ€™opciÃ³ que vols consultar."
     )
 
 def text_nova_consulta(lang):
@@ -77,7 +77,7 @@ def text_final(lang):
         "Gracias por utilizar el asistente virtual de CCOO.
 Si mÃ¡s adelante quieres hacer otra consulta, escribe la palabra CCOO."
         if lang == "es" else
-        "GrÃ cies per utilitzar l'assistent virtual de CCOO.
+        "GrÃ cies per utilitzar lâ€™assistent virtual de CCOO.
 Si mÃ©s endavant vols tornar a fer una consulta, escriu la paraula CCOO."
     )
 
@@ -210,8 +210,11 @@ def webhook():
                 consulta = text
         except:
             consulta = text
-        resposta = generar_resposta(consulta)
-        enviar_missatge(sender, resposta)
+        try:
+            resposta = generar_resposta(consulta)
+            enviar_missatge(sender, resposta)
+        except Exception as e:
+            enviar_missatge(sender, f"Error generant la resposta: {str(e)}")
 
         if not session["file_sent"]:
             enviar_missatge(sender, text_descarregar_pdf(lang))
@@ -221,14 +224,14 @@ def webhook():
             session["state"] = "post_resposta"
 
     elif session["state"] == "esperant_pdf":
-        if text_lower in ["sÃ­", "si"]:
+        if text_lower == "sÃ­" or text_lower == "si":
             enviar_document(sender)
             session["file_sent"] = True
         enviar_missatge(sender, text_nova_consulta(lang))
         session["state"] = "post_resposta"
 
     elif session["state"] == "post_resposta":
-        if text_lower in ["sÃ­", "si"]:
+        if text_lower == "sÃ­" or text_lower == "si":
             enviar_missatge(sender, missatge_benvinguda(lang))
             session["state"] = "menu"
         elif text_lower == "no":
@@ -240,4 +243,4 @@ def webhook():
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)k
+    app.run(host="0.0.0.0", port=port)
