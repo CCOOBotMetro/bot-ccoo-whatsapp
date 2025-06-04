@@ -2,7 +2,6 @@ import os
 import pickle
 import faiss
 import numpy as np
-import requests
 from flask import Flask, request
 from openai import OpenAI
 from datetime import datetime
@@ -10,7 +9,6 @@ from datetime import datetime
 app = Flask(__name__)
 client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
-# Carrega dels arxius FAISS i textos
 with open("index.pkl", "rb") as f:
     index = pickle.load(f)
 with open("chunks.pkl", "rb") as f:
@@ -18,9 +16,7 @@ with open("chunks.pkl", "rb") as f:
 
 assert hasattr(index, "search"), "L'objecte FAISS no Ã©s vÃ lid."
 
-# SessiÃ³ dâ€™usuaris
 user_sessions = {}
-
 PERMISOS_LISTA = [
     "Matrimoni", "Canvi de domicili", "Naixement i cura de menor",
     "Visites mÃ¨diques", "ExÃ mens oficials", "DefunciÃ³ de familiar",
@@ -67,6 +63,7 @@ def text_final(lang):
     )
 
 def enviar_missatge(destinatari, missatge):
+    import requests
     url = f"https://graph.facebook.com/v18.0/{os.environ['PHONE_NUMBER_ID']}/messages"
     headers = {
         "Authorization": f"Bearer {os.environ['WHATSAPP_TOKEN']}",
@@ -81,6 +78,7 @@ def enviar_missatge(destinatari, missatge):
     requests.post(url, headers=headers, json=data)
 
 def enviar_document(destinatari):
+    import requests
     url = f"https://graph.facebook.com/v18.0/{os.environ['PHONE_NUMBER_ID']}/messages"
     headers = {
         "Authorization": f"Bearer {os.environ['WHATSAPP_TOKEN']}",
@@ -171,7 +169,6 @@ def webhook():
     if session["state"] == "inici":
         enviar_missatge(sender, missatge_benvinguda(lang))
         session["state"] = "menu"
-
     elif session["state"] == "menu":
         if text_lower in ["1", "permisos", "permÃ­s", "permiso"]:
             llistat = "\n".join([f"{i+1} - {nom}" for i, nom in enumerate(PERMISOS_LISTA)])
@@ -185,7 +182,6 @@ def webhook():
             )
             enviar_missatge(sender, f"{msg}\n\n{text_nova_consulta(lang)}")
             session["state"] = "post_resposta"
-
     elif session["state"] == "esperant_permÃ­s":
         try:
             idx = int(text) - 1
@@ -197,21 +193,18 @@ def webhook():
             consulta = text
         resposta = generar_resposta(consulta)
         enviar_missatge(sender, resposta)
-
         if not session["file_sent"]:
             enviar_missatge(sender, text_descarregar_pdf(lang))
             session["state"] = "esperant_pdf"
         else:
             enviar_missatge(sender, text_nova_consulta(lang))
             session["state"] = "post_resposta"
-
     elif session["state"] == "esperant_pdf":
         if text_lower in ["sÃ­", "si"]:
             enviar_document(sender)
             session["file_sent"] = True
         enviar_missatge(sender, text_nova_consulta(lang))
         session["state"] = "post_resposta"
-
     elif session["state"] == "post_resposta":
         if text_lower in ["sÃ­", "si"]:
             enviar_missatge(sender, missatge_benvinguda(lang))
