@@ -1,8 +1,8 @@
 import os
-import requests
 import pickle
 import faiss
 import numpy as np
+import requests
 from flask import Flask, request
 from openai import OpenAI
 from datetime import datetime
@@ -10,6 +10,7 @@ from datetime import datetime
 app = Flask(__name__)
 client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
+# Carrega dels arxius FAISS i textos
 with open("index.pkl", "rb") as f:
     index = pickle.load(f)
 with open("chunks.pkl", "rb") as f:
@@ -17,7 +18,9 @@ with open("chunks.pkl", "rb") as f:
 
 assert hasattr(index, "search"), "L'objecte FAISS no Ã©s vÃ lid."
 
+# SessiÃ³ dâ€™usuaris
 user_sessions = {}
+
 PERMISOS_LISTA = [
     "Matrimoni", "Canvi de domicili", "Naixement i cura de menor",
     "Visites mÃ¨diques", "ExÃ mens oficials", "DefunciÃ³ de familiar",
@@ -42,12 +45,12 @@ def missatge_benvinguda(lang):
             "Escribe el nÃºmero o el nombre de la opciÃ³n que quieres consultar."
         )
     return (
-        "Benvingut/da a lâ€™assistent virtual de CCOO Metro de Barcelona.\n\n"
+        "Benvingut/da a l'assistent virtual de CCOO Metro de Barcelona.\n\n"
         "Soc aquÃ­ per ajudar-te a resoldre dubtes.\n"
         "Selecciona una de les segÃ¼ents opcions:\n\n"
         "1 - Permisos laborals\n"
         "2 - Altres consultes\n\n"
-        "Escriu a continuaciÃ³ el nÃºmero o el nom de lâ€™opciÃ³ que vols consultar."
+        "Escriu a continuaciÃ³ el nÃºmero o el nom de l'opciÃ³ que vols consultar."
     )
 
 def text_nova_consulta(lang):
@@ -58,11 +61,9 @@ def text_descarregar_pdf(lang):
 
 def text_final(lang):
     return (
-        "Gracias por utilizar el asistente virtual de CCOO.
-Si mÃ¡s adelante quieres hacer otra consulta, escribe la palabra CCOO."
+        "Gracias por utilizar el asistente virtual de CCOO.\nSi mÃ¡s adelante quieres hacer otra consulta, escribe la palabra CCOO."
         if lang == "es" else
-        "GrÃ cies per utilitzar lâ€™assistent virtual de CCOO.
-Si mÃ©s endavant vols tornar a fer una consulta, escriu la paraula CCOO."
+        "GrÃ cies per utilitzar l'assistent virtual de CCOO.\nSi mÃ©s endavant vols tornar a fer una consulta, escriu la paraula CCOO."
     )
 
 def enviar_missatge(destinatari, missatge):
@@ -194,11 +195,8 @@ def webhook():
                 consulta = text
         except:
             consulta = text
-        try:
-            resposta = generar_resposta(consulta)
-            enviar_missatge(sender, resposta)
-        except Exception as e:
-            enviar_missatge(sender, f"Error generant la resposta: {str(e)}")
+        resposta = generar_resposta(consulta)
+        enviar_missatge(sender, resposta)
 
         if not session["file_sent"]:
             enviar_missatge(sender, text_descarregar_pdf(lang))
@@ -208,14 +206,14 @@ def webhook():
             session["state"] = "post_resposta"
 
     elif session["state"] == "esperant_pdf":
-        if text_lower == "sÃ­" or text_lower == "si":
+        if text_lower in ["sÃ­", "si"]:
             enviar_document(sender)
             session["file_sent"] = True
         enviar_missatge(sender, text_nova_consulta(lang))
         session["state"] = "post_resposta"
 
     elif session["state"] == "post_resposta":
-        if text_lower == "sÃ­" or text_lower == "si":
+        if text_lower in ["sÃ­", "si"]:
             enviar_missatge(sender, missatge_benvinguda(lang))
             session["state"] = "menu"
         elif text_lower == "no":
