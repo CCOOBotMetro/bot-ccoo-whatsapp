@@ -34,35 +34,19 @@ def detectar_idioma(text):
 def missatge_benvinguda(lang):
     if lang == "es":
         return (
-            "Bienvenido/a al asistente virtual de CCOO Metro de Barcelona.
-
-"
-            "Estoy aquÃ­ para ayudarte a resolver tus dudas.
-"
-            "Selecciona una de las siguientes opciones:
-
-"
-            "1 - Permisos laborales
-"
-            "2 - Otras consultas
-
-"
+            "Bienvenido/a al asistente virtual de CCOO Metro de Barcelona.\n\n"
+            "Estoy aquÃ­ para ayudarte a resolver tus dudas.\n"
+            "Selecciona una de las siguientes opciones:\n\n"
+            "1 - Permisos laborales\n"
+            "2 - Otras consultas\n\n"
             "Escribe el nÃºmero o el nombre de la opciÃ³n que quieres consultar."
         )
     return (
-        "Benvingut/da a lâ€™assistent virtual de CCOO Metro de Barcelona.
-
-"
-        "Soc aquÃ­ per ajudar-te a resoldre dubtes.
-"
-        "Selecciona una de les segÃ¼ents opcions:
-
-"
-        "1 - Permisos laborals
-"
-        "2 - Altres consultes
-
-"
+        "Benvingut/da a lâ€™assistent virtual de CCOO Metro de Barcelona.\n\n"
+        "Soc aquÃ­ per ajudar-te a resoldre dubtes.\n"
+        "Selecciona una de les segÃ¼ents opcions:\n\n"
+        "1 - Permisos laborals\n"
+        "2 - Altres consultes\n\n"
         "Escriu a continuaciÃ³ el nÃºmero o el nom de lâ€™opciÃ³ que vols consultar."
     )
 
