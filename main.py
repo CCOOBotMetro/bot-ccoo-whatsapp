@@ -1,31 +1,30 @@
-
 import os
+import requests
 import pickle
 import faiss
 import numpy as np
 from flask import Flask, request
-import openai
+from openai import OpenAI
 from datetime import datetime
 
 app = Flask(__name__)
-openai.api_key = os.getenv("OPENAI_API_KEY")
+client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
-# Carrega arxius de embeddings i text
 with open("index.pkl", "rb") as f:
     index = pickle.load(f)
 with open("chunks.pkl", "rb") as f:
     chunk_texts = pickle.load(f)
 
-assert hasattr(index, "search"), "L'objecte FAISS no és vàlid."
+assert hasattr(index, "search"), "L'objecte FAISS no Ã©s vÃ lid."
 
 user_sessions = {}
 PERMISOS_LISTA = [
     "Matrimoni", "Canvi de domicili", "Naixement i cura de menor",
-    "Visites mèdiques", "Exàmens oficials", "Defunció de familiar",
-    "Assumptes propis", "Deures públics", "Judici per empresa",
-    "Cura fills menors", "Lactància acumulada", "Reducció de jornada",
-    "Exàmens prenatals", "Sense sou", "Violència de gènere",
-    "Assistència mèdica familiars", "Adopció / acolliment", "Jubilació parcial"
+    "Visites mÃ¨diques", "ExÃ mens oficials", "DefunciÃ³ de familiar",
+    "Assumptes propis", "Deures pÃºblics", "Judici per empresa",
+    "Cura fills menors", "LactÃ ncia acumulada", "ReducciÃ³ de jornada",
+    "ExÃ mens prenatals", "Sense sou", "ViolÃ¨ncia de gÃ¨nere",
+    "AssistÃ¨ncia mÃ¨dica familiars", "AdopciÃ³ / acolliment", "JubilaciÃ³ parcial"
 ]
 
 def detectar_idioma(text):
@@ -35,33 +34,51 @@ def detectar_idioma(text):
 def missatge_benvinguda(lang):
     if lang == "es":
         return (
-            "Bienvenido/a al asistente virtual de CCOO Metro de Barcelona.\n\n"
-            "Estoy aquí para ayudarte a resolver tus dudas.\n"
-            "Selecciona una de las siguientes opciones:\n\n"
-            "1 - Permisos laborales\n"
-            "2 - Otras consultas\n\n"
-            "Escribe el número o el nombre de la opción que quieres consultar."
+            "Bienvenido/a al asistente virtual de CCOO Metro de Barcelona.
+
+"
+            "Estoy aquÃ­ para ayudarte a resolver tus dudas.
+"
+            "Selecciona una de las siguientes opciones:
+
+"
+            "1 - Permisos laborales
+"
+            "2 - Otras consultas
+
+"
+            "Escribe el nÃºmero o el nombre de la opciÃ³n que quieres consultar."
         )
     return (
-        "Benvingut/da a l'assistent virtual de CCOO Metro de Barcelona.\n\n"
-        "Soc aquí per ajudar-te a resoldre dubtes.\n"
-        "Selecciona una de les següents opcions:\n\n"
-        "1 - Permisos laborals\n"
-        "2 - Altres consultes\n\n"
-        "Escriu a continuació el número o el nom de l'opció que vols consultar."
+        "Benvingut/da a l'assistent virtual de CCOO Metro de Barcelona.
+
+"
+        "Soc aquÃ­ per ajudar-te a resoldre dubtes.
+"
+        "Selecciona una de les segÃ¼ents opcions:
+
+"
+        "1 - Permisos laborals
+"
+        "2 - Altres consultes
+
+"
+        "Escriu a continuaciÃ³ el nÃºmero o el nom de l'opciÃ³ que vols consultar."
     )
 
 def text_nova_consulta(lang):
-    return "¿Quieres realizar otra consulta? (sí / no)" if lang == "es" else "Vols fer una nova consulta? (sí / no)"
+    return "Â¿Quieres realizar otra consulta? (sÃ­ / no)" if lang == "es" else "Vols fer una nova consulta? (sÃ­ / no)"
 
 def text_descarregar_pdf(lang):
-    return "¿Quieres descargar la tabla oficial de permisos? (sí / no)" if lang == "es" else "Vols descarregar la taula oficial de permisos? (sí / no)"
+    return "Â¿Quieres descargar la tabla oficial de permisos? (sÃ­ / no)" if lang == "es" else "Vols descarregar la taula oficial de permisos? (sÃ­ / no)"
 
 def text_final(lang):
     return (
-        "Gracias por utilizar el asistente virtual de CCOO.\nSi más adelante quieres hacer otra consulta, escribe la palabra CCOO."
+        "Gracias por utilizar el asistente virtual de CCOO.
+Si mÃ¡s adelante quieres hacer otra consulta, escribe la palabra CCOO."
         if lang == "es" else
-        "Gràcies per utilitzar l'assistent virtual de CCOO.\nSi més endavant vols tornar a fer una consulta, escriu la paraula CCOO."
+        "GrÃ cies per utilitzar l'assistent virtual de CCOO.
+Si mÃ©s endavant vols tornar a fer una consulta, escriu la paraula CCOO."
     )
 
 def enviar_missatge(destinatari, missatge):
@@ -97,20 +114,23 @@ def enviar_document(destinatari):
 
 def generar_resposta(pregunta):
     try:
-        embedding = openai.Embedding.create(input=pregunta, model="text-embedding-ada-002")["data"][0]["embedding"]
+        embedding = client.embeddings.create(
+            input=pregunta,
+            model="text-embedding-3-small"
+        ).data[0].embedding
         D, I = index.search(np.array([embedding]).astype("float32"), 3)
         context = "\n---\n".join([chunk_texts[i] for i in I[0]])
-        resposta = openai.ChatCompletion.create(
+        resposta = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
-                {"role": "system", "content": "Respon segons el context proporcionat. Si no tens prou informació, digues-ho."},
+                {"role": "system", "content": "Respon segons el context proporcionat. Si no tens prou informaciÃ³, digues-ho."},
                 {"role": "user", "content": f"Context:\n{context}\n\nPregunta: {pregunta}"}
             ]
         )
-        return resposta["choices"][0]["message"]["content"]
+        return resposta.choices[0].message.content
     except Exception as e:
         print("Error generant la resposta:", str(e))
-        return "Ho sento, ha fallat la generació de la resposta."
+        return "Ho sento, ha fallat la generaciÃ³ de la resposta."
 
 @app.route("/", methods=["GET"])
 def index():
@@ -120,12 +140,11 @@ def index():
 def verificar_webhook():
     if request.args.get("hub.verify_token") == "ccoo2025":
         return request.args.get("hub.challenge")
-    return "Token invàlid", 403
+    return "Token invÃ lid", 403
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
     dades = request.get_json()
-
     try:
         entry = dades.get("entry", [])[0]
         change = entry.get("changes", [])[0]
@@ -169,10 +188,10 @@ def webhook():
         session["state"] = "menu"
 
     elif session["state"] == "menu":
-        if text_lower in ["1", "permisos", "permís", "permiso"]:
+        if text_lower in ["1", "permisos", "permÃ­s", "permiso"]:
             llistat = "\n".join([f"{i+1} - {nom}" for i, nom in enumerate(PERMISOS_LISTA)])
-            enviar_missatge(sender, f"Consulta de permisos laborals.\nEscriu el número o el nom del permís que vols consultar:\n\n{llistat}")
-            session["state"] = "esperant_permís"
+            enviar_missatge(sender, f"Consulta de permisos laborals.\nEscriu el nÃºmero o el nom del permÃ­s que vols consultar:\n\n{llistat}")
+            session["state"] = "esperant_permÃ­s"
         elif text_lower in ["2", "altres", "otras", "otros"]:
             msg = (
                 "Para otras consultas, puedes escribir a: ccoometro@tmb.cat"
@@ -182,7 +201,7 @@ def webhook():
             enviar_missatge(sender, f"{msg}\n\n{text_nova_consulta(lang)}")
             session["state"] = "post_resposta"
 
-    elif session["state"] == "esperant_permís":
+    elif session["state"] == "esperant_permÃ­s":
         try:
             idx = int(text) - 1
             if 0 <= idx < len(PERMISOS_LISTA):
@@ -202,14 +221,14 @@ def webhook():
             session["state"] = "post_resposta"
 
     elif session["state"] == "esperant_pdf":
-        if text_lower in ["sí", "si"]:
+        if text_lower in ["sÃ­", "si"]:
             enviar_document(sender)
             session["file_sent"] = True
         enviar_missatge(sender, text_nova_consulta(lang))
         session["state"] = "post_resposta"
 
     elif session["state"] == "post_resposta":
-        if text_lower in ["sí", "si"]:
+        if text_lower in ["sÃ­", "si"]:
             enviar_missatge(sender, missatge_benvinguda(lang))
             session["state"] = "menu"
         elif text_lower == "no":
@@ -221,4 +240,4 @@ def webhook():
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=port)k
