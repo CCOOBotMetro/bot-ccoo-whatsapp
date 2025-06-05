@@ -122,21 +122,24 @@ def verificar_webhook():
     return "Token invàlid", 403
 
 @app.route("/webhook", methods=["POST"])
-def webhook():
-    dades = request.get_json()
-    try:
-        entry = dades.get("entry", [])[0]
-        change = entry.get("changes", [])[0]
-        value = change.get("value", {})
-        if "messages" not in value:
-            return "OK", 200
-        message = value["messages"][0]
-        sender = message["from"]
-        text = message["text"]["body"].strip()
-        text_lower = text.lower()
-    except Exception as e:
-        print("Error llegint el missatge:", str(e))
-        return "OK", 200
+def generar_resposta(pregunta):
+   try:
+       embedding = client.embeddings.create(input=pregunta, model="text-embedding-3-small").data[0].embedding
+       D, I = index.search(np.array([embedding]).astype("float32"), 3)
+       print("🔍 FAISS index:", I)
+       context = "\n---\n".join([chunk_texts[i] for i in I[0]])
+       print("📄 Context seleccionat:", context[:500])
+       resposta = client.chat.completions.create(
+           model="gpt-3.5-turbo",
+           messages=[
+               {"role": "system", "content": "Respon segons el context proporcionat. Si no tens prou informació, digues-ho."},
+               {"role": "user", "content": f"Context:\n{context}\n\nPregunta: {pregunta}"}
+           ]
+       )
+       return resposta.choices[0].message.content
+   except Exception as e:
+       print("❌ Error generant la resposta:", str(e))
+       return "Ho sento, ha fallat la generació de la resposta."
 
     lang = detectar_idioma(text_lower)
     now = datetime.utcnow()
