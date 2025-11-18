@@ -1,8 +1,0 @@
-pip==25.1.1
-flask
-requests
-openai
-python-dotenv
-numpy
-faiss-cpu
-python-docx
